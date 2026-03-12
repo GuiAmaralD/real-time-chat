@@ -1,17 +1,17 @@
 @if (screenStep === 'nickname') {
   <section class="nickname-screen">
     <div class="card">
-      <h1>Escolha seu apelido</h1>
-      <p>Este apelido sera usado em qualquer sala.</p>
+      <h1>Choose your nickname</h1>
+      <p>This nickname will be used in any room.</p>
 
       <input
         type="text"
         [(ngModel)]="nicknameInput"
-        placeholder="seu apelido"
+        placeholder="your nickname"
         autocomplete="off"
       />
 
-      <button type="button" (click)="enterChat()">Entrar no chat</button>
+      <button type="button" (click)="enterChat()">Enter chat</button>
 
       @if (nicknameError) {
         <p class="error">{{ nicknameError }}</p>
@@ -21,28 +21,28 @@
 } @else {
   <section class="chat-layout">
     <aside class="sidebar">
-      <h2>Chat de Estudo</h2>
-      <p class="meta">Apelido: <strong>{{ nickname }}</strong></p>
+      <h2>Study Chat</h2>
+      <p class="meta">Nickname: <strong>{{ nickname }}</strong></p>
 
       <div class="actions">
-        <button type="button" (click)="showCreateRoom()">Criar sala</button>
-        <button type="button" (click)="showSearchRoom()">Procurar sala</button>
+        <button type="button" (click)="showCreateRoom()">Create room</button>
+        <button type="button" (click)="showSearchRoom()">Search room</button>
       </div>
 
       @if (roomActionMode === 'create') {
         <div class="panel">
-          <h3>Criar sala</h3>
-          <input type="text" [(ngModel)]="createRoomNameInput" placeholder="Nome da sala" />
-          <input type="text" [(ngModel)]="createRoomCodeInput" placeholder="Codigo da sala" />
-          <button type="button" (click)="createRoom()">Confirmar criacao</button>
+          <h3>Create room</h3>
+          <input type="text" [(ngModel)]="createRoomNameInput" placeholder="Room name" />
+          <input type="text" [(ngModel)]="createRoomCodeInput" placeholder="Room code" />
+          <button type="button" (click)="createRoom()">Confirm creation</button>
         </div>
       }
 
       @if (roomActionMode === 'search') {
         <div class="panel">
-          <h3>Procurar sala</h3>
-          <input type="text" [(ngModel)]="searchRoomCodeInput" placeholder="Codigo da sala" />
-          <button type="button" (click)="searchRoom()">Abrir sala</button>
+          <h3>Search room</h3>
+          <input type="text" [(ngModel)]="searchRoomCodeInput" placeholder="Room code" />
+          <button type="button" (click)="searchRoom()">Open room</button>
         </div>
       }
 
@@ -89,13 +89,13 @@
             [(ngModel)]="draft"
             (keydown)="handleComposerKeydown($event)"
             rows="2"
-            placeholder="Digite uma mensagem"
+            placeholder="Type a message"
           ></textarea>
-          <button type="button" (click)="sendMessage()" [disabled]="!draft.trim()">Enviar</button>
+          <button type="button" (click)="sendMessage()" [disabled]="!draft.trim()">Send</button>
         </footer>
       } @else {
         <section class="empty-state">
-          <p>Crie uma sala ou procure por um codigo para comecar.</p>
+          <p>Create a room or search by code to get started.</p>
         </section>
       }
     </main>

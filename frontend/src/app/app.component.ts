@@ -1,28 +1,32 @@
 import { DatePipe } from '@angular/common';
-import { Component, ElementRef, ViewChild } from '@angular/core';
+import { Component, ElementRef, OnDestroy, ViewChild, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { firstValueFrom } from 'rxjs';
+
+import { MessageResponse } from './core/models/message.model';
+import { RoomResponse } from './core/models/room.model';
+import { ChatWebSocketService } from './core/services/chat-websocket.service';
+import { MessageService } from './core/services/message.service';
+import { RoomService } from './core/services/room.service';
+import { UserService } from './core/services/user.service';
 
 type ScreenStep = 'nickname' | 'chat';
 type RoomActionMode = 'none' | 'create' | 'search';
 
 interface ChatMessage {
-  id: number;
+  id: string;
   author: string;
   body: string;
   createdAt: Date;
   mine: boolean;
 }
 
-interface RoomCatalogEntry {
-  code: string;
-  name: string;
-}
-
 interface ChatRoom {
+  id: string;
   code: string;
   name: string;
   messages: ChatMessage[];
-  nextMessageId: number;
+  usersById: Record<string, string>;
 }
 
 @Component({
@@ -31,8 +35,15 @@ interface ChatRoom {
   templateUrl: './app.component.html',
   styleUrl: './app.component.scss'
 })
-export class AppComponent {
+export class AppComponent implements OnDestroy {
   @ViewChild('messageList') private messageList?: ElementRef<HTMLElement>;
+  private readonly userService = inject(UserService);
+  private readonly roomService = inject(RoomService);
+  private readonly messageService = inject(MessageService);
+  private readonly chatWebSocketService = inject(ChatWebSocketService);
+
+  private currentUserId: string | null = null;
+  private readonly roomRealtimeUnsubscribers = new Map<string, () => void>();
 
   protected screenStep: ScreenStep = 'nickname';
   protected roomActionMode: RoomActionMode = 'none';
@@ -53,25 +64,27 @@ export class AppComponent {
 
   protected draft = '';
 
-  private readonly roomCatalog: RoomCatalogEntry[] = [
-    { code: 'WS-INTRO', name: 'websocket-intro' },
-    { code: 'ANGULAR-CHAT', name: 'angular-chat' }
-  ];
-
   protected get activeRoom(): ChatRoom | null {
     return this.joinedRooms.find((room) => room.code === this.activeRoomCode) ?? null;
   }
 
-  protected enterChat(): void {
+  protected async enterChat(): Promise<void> {
     const trimmedNickname = this.nicknameInput.trim();
     if (trimmedNickname.length < 2) {
-      this.nicknameError = 'Digite um apelido com pelo menos 2 caracteres.';
+      this.nicknameError = 'Please enter a nickname with at least 2 characters.';
       return;
     }
 
-    this.nickname = trimmedNickname;
-    this.screenStep = 'chat';
-    this.nicknameError = '';
+    try {
+      const user = await firstValueFrom(this.userService.create({ nickname: trimmedNickname }));
+      this.currentUserId = user.id;
+      this.nickname = user.nickname;
+      this.screenStep = 'chat';
+      this.nicknameError = '';
+      void this.chatWebSocketService.connect();
+    } catch (error) {
+      this.nicknameError = this.getErrorMessage(error, 'Unable to register user.');
+    }
   }
 
   protected showCreateRoom(): void {
@@ -86,54 +99,69 @@ export class AppComponent {
     this.roomInfo = '';
   }
 
-  protected createRoom(): void {
+  protected async createRoom(): Promise<void> {
+    if (!this.currentUserId) {
+      this.roomError = 'Please enter chat before creating a room.';
+      return;
+    }
+
     const roomName = this.createRoomNameInput.trim();
     const roomCode = this.createRoomCodeInput.trim().toUpperCase();
 
     if (roomName.length < 2 || roomCode.length < 3) {
-      this.roomError = 'Informe nome (2+) e codigo (3+) para criar a sala.';
+      this.roomError = 'Provide room name (2+) and code (3+) to create a room.';
       return;
     }
 
-    if (this.roomCatalog.some((room) => room.code === roomCode)) {
-      this.roomError = `Ja existe uma sala com o codigo ${roomCode}.`;
-      return;
+    try {
+      const room = await firstValueFrom(
+        this.roomService.create({
+          name: roomName,
+          code: roomCode,
+          ownerId: this.currentUserId
+        })
+      );
+
+      await this.openRoom(room);
+      this.createRoomNameInput = '';
+      this.createRoomCodeInput = '';
+      this.roomActionMode = 'none';
+      this.roomError = '';
+      this.roomInfo = `Room #${room.code} created and opened.`;
+    } catch (error) {
+      this.roomError = this.getErrorMessage(error, 'Unable to create room.');
     }
-
-    const newCatalogEntry: RoomCatalogEntry = {
-      code: roomCode,
-      name: roomName
-    };
-
-    this.roomCatalog.push(newCatalogEntry);
-    this.joinCatalogRoom(newCatalogEntry);
-
-    this.createRoomNameInput = '';
-    this.createRoomCodeInput = '';
-    this.roomActionMode = 'none';
-    this.roomError = '';
-    this.roomInfo = `Sala #${roomCode} criada e aberta.`;
   }
 
-  protected searchRoom(): void {
+  protected async searchRoom(): Promise<void> {
+    if (!this.currentUserId) {
+      this.roomError = 'Please enter chat before opening a room.';
+      return;
+    }
+
     const roomCode = this.searchRoomCodeInput.trim().toUpperCase();
 
     if (roomCode.length < 3) {
-      this.roomError = 'Digite um codigo de sala valido.';
+      this.roomError = 'Enter a valid room code.';
       return;
     }
 
-    const catalogRoom = this.roomCatalog.find((room) => room.code === roomCode);
-    if (!catalogRoom) {
-      this.roomError = `Sala com codigo ${roomCode} nao encontrada.`;
-      return;
-    }
+    try {
+      const room = await firstValueFrom(
+        this.roomService.joinByCode({
+          code: roomCode,
+          userId: this.currentUserId
+        })
+      );
 
-    this.joinCatalogRoom(catalogRoom);
-    this.searchRoomCodeInput = '';
-    this.roomActionMode = 'none';
-    this.roomError = '';
-    this.roomInfo = `Sala #${roomCode} aberta.`;
+      await this.openRoom(room);
+      this.searchRoomCodeInput = '';
+      this.roomActionMode = 'none';
+      this.roomError = '';
+      this.roomInfo = `Room #${room.code} opened.`;
+    } catch (error) {
+      this.roomError = this.getErrorMessage(error, `Room with code ${roomCode} was not found.`);
+    }
   }
 
   protected selectRoom(code: string): void {
@@ -141,65 +169,166 @@ export class AppComponent {
     this.scrollToBottom();
   }
 
-  protected sendMessage(): void {
+  protected async sendMessage(): Promise<void> {
     const room = this.activeRoom;
     const messageBody = this.draft.trim();
 
-    if (!room || !messageBody) {
+    if (!room || !messageBody || !this.currentUserId) {
       return;
     }
 
-    room.messages = [
-      ...room.messages,
-      {
-        id: room.nextMessageId,
-        author: this.nickname,
-        body: messageBody,
-        createdAt: new Date(),
-        mine: true
+    try {
+      await this.chatWebSocketService.sendRoomMessage(room.id, {
+        userId: this.currentUserId,
+        content: messageBody
+      });
+      this.draft = '';
+      this.roomError = '';
+      this.scrollToBottom();
+    } catch (error) {
+      try {
+        const response = await firstValueFrom(
+          this.messageService.send(room.id, {
+            userId: this.currentUserId,
+            content: messageBody
+          })
+        );
+        this.handleIncomingMessage(room.id, response);
+        this.draft = '';
+        this.roomError = '';
+      } catch (fallbackError) {
+        this.roomError = this.getErrorMessage(fallbackError, this.getErrorMessage(error, 'Unable to send message.'));
       }
-    ];
-
-    room.nextMessageId += 1;
-    this.draft = '';
-    this.scrollToBottom();
+    }
   }
 
   protected handleComposerKeydown(event: KeyboardEvent): void {
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
-      this.sendMessage();
+      void this.sendMessage();
     }
   }
 
-  private joinCatalogRoom(catalogRoom: RoomCatalogEntry): void {
-    const existingRoom = this.joinedRooms.find((room) => room.code === catalogRoom.code);
-    if (existingRoom) {
-      this.activeRoomCode = existingRoom.code;
-      this.scrollToBottom();
+  private async openRoom(room: RoomResponse): Promise<void> {
+    if (!this.currentUserId) {
       return;
     }
 
-    const messages: ChatMessage[] = [
-      {
-        id: 1,
-        author: 'Sistema',
-        body: `Voce entrou na sala ${catalogRoom.name} (#${catalogRoom.code}).`,
-        createdAt: new Date(),
-        mine: false
-      }
-    ];
+    const [roomUsers, recentMessages] = await Promise.all([
+      firstValueFrom(this.roomService.listUsers(room.id)),
+      firstValueFrom(this.messageService.listRecent(room.id, this.currentUserId, 100))
+    ]);
+
+    const usersById: Record<string, string> = Object.fromEntries(
+      roomUsers.map((roomUser) => [roomUser.id, roomUser.nickname])
+    );
+    usersById[this.currentUserId] = this.nickname;
+
+    const messages = recentMessages
+      .map((message) => this.toChatMessage(message, usersById))
+      .sort((left, right) => left.createdAt.getTime() - right.createdAt.getTime());
 
     const joinedRoom: ChatRoom = {
-      code: catalogRoom.code,
-      name: catalogRoom.name,
-      messages,
-      nextMessageId: 2
+      id: room.id,
+      code: room.code,
+      name: room.name,
+      usersById,
+      messages
     };
 
-    this.joinedRooms = [...this.joinedRooms, joinedRoom];
+    this.upsertRoom(joinedRoom);
+    try {
+      await this.ensureRealtimeSubscription(room.id);
+    } catch {
+      this.roomInfo = `Room #${room.code} opened without realtime updates.`;
+    }
     this.activeRoomCode = joinedRoom.code;
     this.scrollToBottom();
+  }
+
+  private async ensureRealtimeSubscription(roomId: string): Promise<void> {
+    if (this.roomRealtimeUnsubscribers.has(roomId)) {
+      return;
+    }
+
+    const unsubscribe = await this.chatWebSocketService.subscribeRoomMessages(roomId, (message) => {
+      this.handleIncomingMessage(roomId, message);
+    });
+
+    this.roomRealtimeUnsubscribers.set(roomId, unsubscribe);
+  }
+
+  private handleIncomingMessage(roomId: string, message: MessageResponse): void {
+    const room = this.joinedRooms.find((joinedRoom) => joinedRoom.id === roomId);
+    if (!room) {
+      return;
+    }
+
+    if (room.messages.some((existingMessage) => existingMessage.id === message.id)) {
+      return;
+    }
+
+    const usersById = {
+      ...room.usersById
+    };
+    if (this.currentUserId) {
+      usersById[this.currentUserId] = this.nickname;
+    }
+    if (message.nickname?.trim()) {
+      usersById[message.userId] = message.nickname;
+    }
+
+    const updatedRoom: ChatRoom = {
+      ...room,
+      usersById,
+      messages: [...room.messages, this.toChatMessage(message, usersById)].sort(
+        (left, right) => left.createdAt.getTime() - right.createdAt.getTime()
+      )
+    };
+
+    this.upsertRoom(updatedRoom);
+    this.scrollToBottom();
+  }
+
+  private toChatMessage(message: MessageResponse, usersById: Record<string, string>): ChatMessage {
+    const mine = message.userId === this.currentUserId;
+    const parsedDate = new Date(message.sentAt);
+    const createdAt = Number.isNaN(parsedDate.getTime()) ? new Date() : parsedDate;
+
+    return {
+      id: message.id,
+      author: mine ? this.nickname : (message.nickname ?? usersById[message.userId] ?? message.userId),
+      body: message.content,
+      createdAt,
+      mine
+    };
+  }
+
+  private upsertRoom(room: ChatRoom): void {
+    const index = this.joinedRooms.findIndex((joinedRoom) => joinedRoom.code === room.code);
+    if (index === -1) {
+      this.joinedRooms = [...this.joinedRooms, room];
+      return;
+    }
+
+    this.joinedRooms = this.joinedRooms.map((joinedRoom, joinedRoomIndex) =>
+      joinedRoomIndex === index ? room : joinedRoom
+    );
+  }
+
+  private getErrorMessage(error: unknown, fallback: string): string {
+    if (error instanceof Error && error.message.trim()) {
+      return error.message;
+    }
+
+    return fallback;
+  }
+
+  ngOnDestroy(): void {
+    for (const unsubscribe of this.roomRealtimeUnsubscribers.values()) {
+      unsubscribe();
+    }
+    this.roomRealtimeUnsubscribers.clear();
   }
 
   private scrollToBottom(): void {
