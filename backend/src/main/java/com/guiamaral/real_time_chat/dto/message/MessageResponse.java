@@ -6,6 +6,7 @@ public record MessageResponse(
 		String id,
 		String roomId,
 		String userId,
+		String userNickname,
 		String content,
 		Instant sentAt
 ) {
