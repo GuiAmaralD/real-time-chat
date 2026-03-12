@@ -6,7 +6,6 @@ import java.util.Optional;
 import java.util.UUID;
 
 import com.guiamaral.real_time_chat.model.User;
-import com.guiamaral.real_time_chat.repository.UserRepository;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;

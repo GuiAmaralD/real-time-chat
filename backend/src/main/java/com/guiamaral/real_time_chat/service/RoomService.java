@@ -1,0 +1,129 @@
+package com.guiamaral.real_time_chat.service;
+
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Objects;
+import java.util.Set;
+import java.util.UUID;
+import java.util.stream.StreamSupport;
+
+import com.guiamaral.real_time_chat.dto.room.CreateRoomRequest;
+import com.guiamaral.real_time_chat.dto.room.JoinRoomRequest;
+import com.guiamaral.real_time_chat.dto.room.RoomResponse;
+import com.guiamaral.real_time_chat.dto.room.RoomUserResponse;
+import com.guiamaral.real_time_chat.exception.ApiException;
+import com.guiamaral.real_time_chat.model.Room;
+import com.guiamaral.real_time_chat.model.User;
+import com.guiamaral.real_time_chat.repository.RoomRepository;
+import com.guiamaral.real_time_chat.repository.UserRepository;
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
+
+@Service
+public class RoomService {
+
+	private static final int MAX_ROOMS_PER_USER = 3;
+
+	private final RoomRepository roomRepository;
+	private final UserRepository userRepository;
+
+	public RoomService(RoomRepository roomRepository, UserRepository userRepository) {
+		this.roomRepository = roomRepository;
+		this.userRepository = userRepository;
+	}
+
+	public RoomResponse create(CreateRoomRequest request) {
+		findUserOrThrow(request.ownerId(), "owner user not found");
+
+		if (roomRepository.findByCode(request.code()).isPresent()) {
+			throw new ApiException(HttpStatus.CONFLICT, "room code already exists");
+		}
+
+		if (countRoomsForUser(request.ownerId()) >= MAX_ROOMS_PER_USER) {
+			throw new ApiException(HttpStatus.CONFLICT, "user reached max rooms limit");
+		}
+
+		Room room = new Room();
+		room.setId(UUID.randomUUID().toString());
+		room.setName(request.name());
+		room.setCode(request.code());
+		room.setOwnerId(request.ownerId());
+		room.setMemberIds(new LinkedHashSet<>(Set.of(request.ownerId())));
+
+		return toRoomResponse(roomRepository.save(room));
+	}
+
+	public RoomResponse joinByCode(JoinRoomRequest request) {
+		findUserOrThrow(request.userId(), "user not found");
+		Room room = roomRepository.findByCode(request.code())
+				.orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "room not found"));
+
+		Set<String> members = room.getMemberIds();
+		if (members == null) {
+			members = new LinkedHashSet<>();
+			room.setMemberIds(members);
+		}
+
+		if (members.contains(request.userId())) {
+			return toRoomResponse(room);
+		}
+
+		if (countRoomsForUser(request.userId()) >= MAX_ROOMS_PER_USER) {
+			throw new ApiException(HttpStatus.CONFLICT, "user reached max rooms limit");
+		}
+
+		members.add(request.userId());
+		return toRoomResponse(roomRepository.save(room));
+	}
+
+	public RoomResponse findByCode(String code) {
+		Room room = roomRepository.findByCode(code)
+				.orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "room not found"));
+		return toRoomResponse(room);
+	}
+
+	public List<RoomUserResponse> listRoomUsers(String roomId) {
+		Room room = roomRepository.findById(roomId)
+				.orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "room not found"));
+
+		Set<String> members = room.getMemberIds() == null ? Set.of() : room.getMemberIds();
+		return members.stream()
+				.map(memberId -> toRoomUserResponse(room, memberId))
+				.filter(Objects::nonNull)
+				.toList();
+	}
+
+	private User findUserOrThrow(String userId, String message) {
+		return userRepository.findById(userId)
+				.orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, message));
+	}
+
+	private long countRoomsForUser(String userId) {
+		return StreamSupport.stream(roomRepository.findAll().spliterator(), false)
+				.filter(room -> room.getMemberIds() != null && room.getMemberIds().contains(userId))
+				.count();
+	}
+
+	private RoomUserResponse toRoomUserResponse(Room room, String memberId) {
+		return userRepository.findById(memberId)
+				.map(user -> new RoomUserResponse(
+						user.getId(),
+						user.getNickname(),
+						memberId.equals(room.getOwnerId()) ? "owner" : "member"
+				))
+				.orElse(null);
+	}
+
+	private RoomResponse toRoomResponse(Room room) {
+		Set<String> memberIds = room.getMemberIds() == null
+				? Set.of()
+				: new LinkedHashSet<>(room.getMemberIds());
+		return new RoomResponse(
+				room.getId(),
+				room.getName(),
+				room.getCode(),
+				room.getOwnerId(),
+				memberIds
+		);
+	}
+}
