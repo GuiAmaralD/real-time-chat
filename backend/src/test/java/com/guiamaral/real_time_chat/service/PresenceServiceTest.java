@@ -128,6 +128,23 @@ class PresenceServiceTest {
 		assertEquals("Ana", updates.get(0).payload().members().get(0).nickname());
 	}
 
+	@Test
+	void removeUserFromRoomShouldKeepOtherUsersFromSameRoomOnline() {
+		stubRoom("room-1", Set.of("user-1", "user-2"));
+		stubUser("user-1", "Gui");
+		stubUser("user-2", "Ana");
+		stubFindAllById(Map.of("user-1", "Gui", "user-2", "Ana"));
+		presenceService.join("room-1", "user-1", "session-1");
+		presenceService.join("room-1", "user-2", "session-2");
+
+		List<PresenceService.PresenceUpdate> updates = presenceService.removeUserFromRoom("room-1", "user-1");
+
+		assertEquals(1, updates.size());
+		assertEquals("room-1", updates.get(0).roomId());
+		assertEquals(1, updates.get(0).payload().onlineCount());
+		assertEquals("user-2", updates.get(0).payload().members().get(0).id());
+	}
+
 	private void stubRoom(String roomId, Set<String> members) {
 		Room room = new Room(roomId, "General", "GEN-" + roomId, "owner-1", new LinkedHashSet<>(members));
 		when(roomRepository.findById(roomId)).thenReturn(Optional.of(room));

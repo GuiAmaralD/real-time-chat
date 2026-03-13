@@ -21,6 +21,7 @@ describe('AppComponent', () => {
     roomServiceMock = jasmine.createSpyObj<RoomService>('RoomService', [
       'create',
       'joinByCode',
+      'leave',
       'findByCode',
       'listUsers'
     ]);
@@ -67,6 +68,7 @@ describe('AppComponent', () => {
     userServiceMock.disconnectOnUnload.and.stub();
     roomServiceMock.create.and.returnValue(of(createdRoom));
     roomServiceMock.joinByCode.and.returnValue(of(joinedRoom));
+    roomServiceMock.leave.and.returnValue(of(void 0));
     roomServiceMock.listUsers.and.returnValue(of(roomUsers));
     roomServiceMock.findByCode.and.returnValue(of(joinedRoom));
     messageServiceMock.listRecent.and.returnValue(of([]));
@@ -221,5 +223,29 @@ describe('AppComponent', () => {
       content: 'WebSocket test'
     });
     expect(messageServiceMock.send).not.toHaveBeenCalled();
+  });
+
+  it('should leave room when clicking leave action', async () => {
+    const fixture = TestBed.createComponent(AppComponent);
+    const component = fixture.componentInstance as any;
+
+    component.nicknameInput = 'Gui';
+    await component.enterChat();
+
+    component.createRoomNameInput = 'My Room';
+    component.createRoomCodeInput = 'myroom123';
+    await component.createRoom();
+
+    component.searchRoomCodeInput = 'ws-intro';
+    await component.searchRoom();
+
+    expect(component.joinedRooms.length).toBe(2);
+    expect(component.activeRoomCode).toBe('WS-INTRO');
+
+    await component.leaveRoom('WS-INTRO');
+
+    expect(roomServiceMock.leave).toHaveBeenCalledWith('room-2', { userId: 'user-1' });
+    expect(component.joinedRooms.length).toBe(1);
+    expect(component.activeRoomCode).toBe('MYROOM123');
   });
 });

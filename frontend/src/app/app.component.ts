@@ -178,6 +178,46 @@ export class AppComponent implements OnDestroy {
     this.scrollToBottom();
   }
 
+  protected async leaveRoom(code: string, event?: Event): Promise<void> {
+    event?.stopPropagation();
+
+    if (!this.currentUserId) {
+      return;
+    }
+
+    const room = this.joinedRooms.find((joinedRoom) => joinedRoom.code === code);
+    if (!room) {
+      return;
+    }
+
+    try {
+      await firstValueFrom(
+        this.roomService.leave(room.id, {
+          userId: this.currentUserId
+        })
+      );
+    } catch (error) {
+      this.roomError = this.getErrorMessage(error, `Unable to leave room #${room.code}.`);
+      return;
+    }
+
+    const previousActiveCode = this.activeRoomCode;
+    const remainingRooms = this.joinedRooms.filter((joinedRoom) => joinedRoom.code !== code);
+    const nextActiveCode = previousActiveCode === code ? (remainingRooms[0]?.code ?? null) : previousActiveCode;
+
+    await this.detachRoomRealtime(room.id);
+    await this.syncPresenceForActiveRoom(previousActiveCode, nextActiveCode);
+
+    this.joinedRooms = remainingRooms;
+    this.activeRoomCode = nextActiveCode;
+    if (previousActiveCode === code || !nextActiveCode) {
+      this.showMembersPanel = false;
+    }
+
+    this.roomError = '';
+    this.roomInfo = `You left room #${room.code}.`;
+  }
+
   protected toggleMembersPanel(): void {
     this.showMembersPanel = !this.showMembersPanel;
   }
@@ -317,6 +357,30 @@ export class AppComponent implements OnDestroy {
         this.presenceJoinedRoomIds.add(nextRoomId);
       } catch {
         // Presence join can fail independently from chat loading.
+      }
+    }
+  }
+
+  private async detachRoomRealtime(roomId: string): Promise<void> {
+    const messageUnsubscribe = this.roomRealtimeUnsubscribers.get(roomId);
+    if (messageUnsubscribe) {
+      messageUnsubscribe();
+      this.roomRealtimeUnsubscribers.delete(roomId);
+    }
+
+    const presenceUnsubscribe = this.roomPresenceUnsubscribers.get(roomId);
+    if (presenceUnsubscribe) {
+      presenceUnsubscribe();
+      this.roomPresenceUnsubscribers.delete(roomId);
+    }
+
+    if (this.currentUserId && this.presenceJoinedRoomIds.has(roomId)) {
+      try {
+        await this.chatWebSocketService.leaveRoomPresence(roomId, this.currentUserId);
+      } catch {
+        // Ignore disconnect failures during room cleanup.
+      } finally {
+        this.presenceJoinedRoomIds.delete(roomId);
       }
     }
   }

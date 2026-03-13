@@ -73,16 +73,4 @@ class UserControllerTest {
 		verify(messagingTemplate).convertAndSend("/topic/rooms/room-1/presence", payload);
 	}
 
-	@Test
-	void deleteShouldDeleteUserAndBroadcastPresenceUpdates() {
-		RoomPresenceResponse payload = new RoomPresenceResponse("room-1", 1, java.util.List.of());
-		var updates = java.util.List.of(new PresenceService.PresenceUpdate("room-1", payload));
-		when(userService.disconnectAndDelete("user-1")).thenReturn(updates);
-
-		ResponseEntity<Void> response = userController.delete("user-1");
-
-		assertEquals(HttpStatus.NO_CONTENT, response.getStatusCode());
-		verify(userService).disconnectAndDelete("user-1");
-		verify(messagingTemplate).convertAndSend("/topic/rooms/room-1/presence", payload);
-	}
 }

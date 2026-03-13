@@ -144,6 +144,61 @@ class RoomServiceTest {
 		}
 	}
 
+	@Nested
+	class LeaveTests {
+
+		@Test
+		void leaveShouldRemoveMemberAndKeepOwner() {
+			String roomId = "room-1";
+			String userId = "member-1";
+			Room room = room(roomId, "General", "GEN01", "owner-1", Set.of("owner-1", userId));
+
+			when(userRepository.findById(userId)).thenReturn(Optional.of(new User(userId, "member")));
+			when(roomRepository.findById(roomId)).thenReturn(Optional.of(room));
+			when(roomRepository.save(any(Room.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+			roomService.leave(roomId, userId);
+
+			ArgumentCaptor<Room> captor = ArgumentCaptor.forClass(Room.class);
+			verify(roomRepository).save(captor.capture());
+			assertEquals("owner-1", captor.getValue().getOwnerId());
+			assertEquals(Set.of("owner-1"), captor.getValue().getMemberIds());
+		}
+
+		@Test
+		void leaveShouldTransferOwnershipWhenOwnerLeaves() {
+			String roomId = "room-1";
+			String userId = "owner-1";
+			Room room = room(roomId, "General", "GEN01", userId, new LinkedHashSet<>(Set.of(userId, "member-1")));
+
+			when(userRepository.findById(userId)).thenReturn(Optional.of(new User(userId, "owner")));
+			when(roomRepository.findById(roomId)).thenReturn(Optional.of(room));
+			when(roomRepository.save(any(Room.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+			roomService.leave(roomId, userId);
+
+			ArgumentCaptor<Room> captor = ArgumentCaptor.forClass(Room.class);
+			verify(roomRepository).save(captor.capture());
+			assertEquals("member-1", captor.getValue().getOwnerId());
+			assertEquals(Set.of("member-1"), captor.getValue().getMemberIds());
+		}
+
+		@Test
+		void leaveShouldDeleteRoomWhenLastMemberLeaves() {
+			String roomId = "room-1";
+			String userId = "owner-1";
+			Room room = room(roomId, "General", "GEN01", userId, Set.of(userId));
+
+			when(userRepository.findById(userId)).thenReturn(Optional.of(new User(userId, "owner")));
+			when(roomRepository.findById(roomId)).thenReturn(Optional.of(room));
+
+			roomService.leave(roomId, userId);
+
+			verify(roomRepository).deleteById(roomId);
+			verify(roomRepository, never()).save(any(Room.class));
+		}
+	}
+
 	@Test
 	void listRoomUsersShouldReturnOwnerAndMembers() {
 		LinkedHashSet<String> members = new LinkedHashSet<>();

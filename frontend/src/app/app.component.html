@@ -56,14 +56,25 @@
 
       <div class="room-list">
         @for (room of joinedRooms; track room.code) {
-          <button
-            type="button"
-            class="room-item"
-            [class.active]="room.code === activeRoomCode"
-            (click)="selectRoom(room.code)"
-          >
-            {{ room.name }} (#{{ room.code }})
-          </button>
+          <div class="room-list-item">
+            <button
+              type="button"
+              class="room-item"
+              [class.active]="room.code === activeRoomCode"
+              (click)="selectRoom(room.code)"
+            >
+              {{ room.name }} (#{{ room.code }})
+            </button>
+            <button
+              type="button"
+              class="room-leave"
+              title="Leave room"
+              aria-label="Leave room"
+              (click)="leaveRoom(room.code, $event)"
+            >
+              X
+            </button>
+          </div>
         }
       </div>
     </aside>

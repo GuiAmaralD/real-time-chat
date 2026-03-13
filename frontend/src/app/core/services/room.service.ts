@@ -6,6 +6,7 @@ import { API_ENDPOINTS } from '../api/endpoints';
 import {
   CreateRoomRequest,
   JoinRoomRequest,
+  LeaveRoomRequest,
   RoomResponse,
   RoomUserResponse
 } from '../models/room.model';
@@ -20,6 +21,10 @@ export class RoomService {
 
   joinByCode(payload: JoinRoomRequest): Observable<RoomResponse> {
     return this.apiClient.post<JoinRoomRequest, RoomResponse>(API_ENDPOINTS.rooms.join, payload);
+  }
+
+  leave(roomId: string, payload: LeaveRoomRequest): Observable<void> {
+    return this.apiClient.post<LeaveRoomRequest, void>(API_ENDPOINTS.rooms.leave(roomId), payload);
   }
 
   findByCode(code: string): Observable<RoomResponse> {

@@ -5,8 +5,11 @@ import java.util.Set;
 
 import com.guiamaral.real_time_chat.dto.room.CreateRoomRequest;
 import com.guiamaral.real_time_chat.dto.room.JoinRoomRequest;
+import com.guiamaral.real_time_chat.dto.room.LeaveRoomRequest;
 import com.guiamaral.real_time_chat.dto.room.RoomResponse;
 import com.guiamaral.real_time_chat.dto.room.RoomUserResponse;
+import com.guiamaral.real_time_chat.dto.presence.RoomPresenceResponse;
+import com.guiamaral.real_time_chat.service.PresenceService;
 import com.guiamaral.real_time_chat.service.RoomService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -15,6 +18,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -27,11 +31,17 @@ class RoomControllerTest {
 	@Mock
 	private RoomService roomService;
 
+	@Mock
+	private PresenceService presenceService;
+
+	@Mock
+	private SimpMessagingTemplate messagingTemplate;
+
 	private RoomController roomController;
 
 	@BeforeEach
 	void setUp() {
-		roomController = new RoomController(roomService);
+		roomController = new RoomController(roomService, presenceService, messagingTemplate);
 	}
 
 	@Test
@@ -60,6 +70,21 @@ class RoomControllerTest {
 		assertNotNull(response.getBody());
 		assertEquals(2, response.getBody().memberIds().size());
 		verify(roomService).joinByCode(request);
+	}
+
+	@Test
+	void leaveShouldRemoveUserFromRoomAndBroadcastPresence() {
+		LeaveRoomRequest request = new LeaveRoomRequest("user-1");
+		RoomPresenceResponse payload = new RoomPresenceResponse("room-1", 1, List.of());
+		var updates = List.of(new PresenceService.PresenceUpdate("room-1", payload));
+		when(presenceService.removeUserFromRoom("room-1", "user-1")).thenReturn(updates);
+
+		ResponseEntity<Void> response = roomController.leave("room-1", request);
+
+		assertEquals(HttpStatus.NO_CONTENT, response.getStatusCode());
+		verify(roomService).leave("room-1", "user-1");
+		verify(presenceService).removeUserFromRoom("room-1", "user-1");
+		verify(messagingTemplate).convertAndSend("/topic/rooms/room-1/presence", payload);
 	}
 
 	@Test

@@ -9,6 +9,7 @@ export const API_ENDPOINTS = {
   rooms: {
     create: '/rooms',
     join: '/rooms/join',
+    leave: (roomId: string): string => `/rooms/${encoded(roomId)}/leave`,
     byCode: (code: string): string => `/rooms/code/${encoded(code)}`,
     users: (roomId: string): string => `/rooms/${encoded(roomId)}/users`,
     messages: {

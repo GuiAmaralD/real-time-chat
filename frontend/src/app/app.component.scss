@@ -154,16 +154,36 @@ button:disabled {
   overflow-y: auto;
 }
 
+.room-list-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.3rem;
+}
+
 .room-item {
   text-align: left;
   background: #21445e;
   color: var(--text-main);
   border-color: #2f5672;
+  min-width: 0;
 }
 
 .room-item.active {
   border-color: var(--accent);
   background: #1a7d5f;
+}
+
+.room-leave {
+  width: 2rem;
+  padding: 0.5rem 0;
+  border: 1px solid #6a3744;
+  background: #3d1d27;
+  color: #ffcad3;
+  font-weight: 700;
+}
+
+.room-leave:hover {
+  background: #512533;
 }
 
 .chat-main {

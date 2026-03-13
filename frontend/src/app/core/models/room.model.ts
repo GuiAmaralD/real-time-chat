@@ -9,6 +9,10 @@ export interface JoinRoomRequest {
   userId: string;
 }
 
+export interface LeaveRoomRequest {
+  userId: string;
+}
+
 export interface RoomResponse {
   id: string;
   name: string;

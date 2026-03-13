@@ -82,6 +82,33 @@ public class RoomService {
 		return toRoomResponse(room);
 	}
 
+	public void leave(String roomId, String userId) {
+		findUserOrThrow(userId, "user not found");
+		Room room = roomRepository.findById(roomId)
+				.orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "room not found"));
+
+		Set<String> members = room.getMemberIds() == null
+				? new LinkedHashSet<>()
+				: new LinkedHashSet<>(room.getMemberIds());
+
+		if (!members.contains(userId)) {
+			throw new ApiException(HttpStatus.FORBIDDEN, "user is not a room member");
+		}
+
+		members.remove(userId);
+		if (members.isEmpty()) {
+			roomRepository.deleteById(roomId);
+			return;
+		}
+
+		if (userId.equals(room.getOwnerId())) {
+			room.setOwnerId(members.iterator().next());
+		}
+
+		room.setMemberIds(members);
+		roomRepository.save(room);
+	}
+
 	public List<RoomUserResponse> listRoomUsers(String roomId) {
 		Room room = roomRepository.findById(roomId)
 				.orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "room not found"));
