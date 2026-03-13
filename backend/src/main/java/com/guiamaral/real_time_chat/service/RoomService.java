@@ -35,10 +35,6 @@ public class RoomService {
 	public RoomResponse create(CreateRoomRequest request) {
 		findUserOrThrow(request.ownerId(), "owner user not found");
 
-		if (roomRepository.findByCode(request.code()).isPresent()) {
-			throw new ApiException(HttpStatus.CONFLICT, "room code already exists");
-		}
-
 		if (countRoomsForUser(request.ownerId()) >= MAX_ROOMS_PER_USER) {
 			throw new ApiException(HttpStatus.CONFLICT, "user reached max rooms limit");
 		}
@@ -46,7 +42,7 @@ public class RoomService {
 		Room room = new Room();
 		room.setId(UUID.randomUUID().toString());
 		room.setName(request.name());
-		room.setCode(request.code());
+		room.setCode(generateUniqueRoomCode());
 		room.setOwnerId(request.ownerId());
 		room.setMemberIds(new LinkedHashSet<>(Set.of(request.ownerId())));
 
@@ -123,6 +119,14 @@ public class RoomService {
 	private User findUserOrThrow(String userId, String message) {
 		return userRepository.findById(userId)
 				.orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, message));
+	}
+
+	private String generateUniqueRoomCode() {
+		String code;
+		do {
+			code = UUID.randomUUID().toString();
+		} while (roomRepository.findByCode(code).isPresent());
+		return code;
 	}
 
 	private long countRoomsForUser(String userId) {

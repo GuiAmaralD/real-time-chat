@@ -4,6 +4,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 
 import com.guiamaral.real_time_chat.dto.room.CreateRoomRequest;
 import com.guiamaral.real_time_chat.dto.room.JoinRoomRequest;
@@ -53,10 +54,10 @@ class RoomServiceTest {
 
 		@Test
 		void createShouldPersistRoomWhenRequestIsValid() {
-			CreateRoomRequest request = new CreateRoomRequest("General", "GEN01", "owner-1");
+			CreateRoomRequest request = new CreateRoomRequest("General", "owner-1");
 
 			when(userRepository.findById("owner-1")).thenReturn(Optional.of(new User("owner-1", "owner")));
-			when(roomRepository.findByCode("GEN01")).thenReturn(Optional.empty());
+			when(roomRepository.findByCode(any(String.class))).thenReturn(Optional.empty());
 			when(roomRepository.findAll()).thenReturn(List.of());
 			when(roomRepository.save(any(Room.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -69,31 +70,19 @@ class RoomServiceTest {
 			assertNotNull(persistedRoom.getId());
 			assertEquals("owner-1", persistedRoom.getOwnerId());
 			assertTrue(persistedRoom.getMemberIds().contains("owner-1"));
-			assertEquals("GEN01", response.code());
-		}
-
-		@Test
-		void createShouldThrowConflictWhenCodeAlreadyExists() {
-			CreateRoomRequest request = new CreateRoomRequest("General", "GEN01", "owner-1");
-
-			when(userRepository.findById("owner-1")).thenReturn(Optional.of(new User("owner-1", "owner")));
-			when(roomRepository.findByCode("GEN01")).thenReturn(Optional.of(room("r1", "Existing", "GEN01", "owner-x", Set.of("owner-x"))));
-
-			ApiException exception = assertThrows(ApiException.class, () -> roomService.create(request));
-
-			assertEquals(HttpStatus.CONFLICT, exception.getStatus());
-			verify(roomRepository, never()).save(any(Room.class));
+			assertNotNull(response.code());
+			assertEquals(response.code(), persistedRoom.getCode());
+			assertEquals(response.code(), UUID.fromString(response.code()).toString());
 		}
 
 		@Test
 		void createShouldThrowConflictWhenOwnerAlreadyHasThreeRooms() {
-			CreateRoomRequest request = new CreateRoomRequest("General", "GEN04", "owner-1");
+			CreateRoomRequest request = new CreateRoomRequest("General", "owner-1");
 			Room r1 = room("r1", "A", "A1", "owner-1", Set.of("owner-1"));
 			Room r2 = room("r2", "B", "B1", "owner-1", Set.of("owner-1"));
 			Room r3 = room("r3", "C", "C1", "owner-1", Set.of("owner-1"));
 
 			when(userRepository.findById("owner-1")).thenReturn(Optional.of(new User("owner-1", "owner")));
-			when(roomRepository.findByCode("GEN04")).thenReturn(Optional.empty());
 			when(roomRepository.findAll()).thenReturn(List.of(r1, r2, r3));
 
 			ApiException exception = assertThrows(ApiException.class, () -> roomService.create(request));

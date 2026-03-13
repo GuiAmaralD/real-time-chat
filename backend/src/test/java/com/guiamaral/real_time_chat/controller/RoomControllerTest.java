@@ -46,7 +46,7 @@ class RoomControllerTest {
 
 	@Test
 	void createShouldReturnCreatedRoom() {
-		CreateRoomRequest request = new CreateRoomRequest("General", "GEN01", "owner-1");
+		CreateRoomRequest request = new CreateRoomRequest("General", "owner-1");
 		RoomResponse createdRoom = roomResponse("room-1", "General", "GEN01", "owner-1", Set.of("owner-1"));
 		when(roomService.create(request)).thenReturn(createdRoom);
 
