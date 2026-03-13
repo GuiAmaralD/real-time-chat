@@ -1,5 +1,6 @@
 package com.guiamaral.real_time_chat.service;
 
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -148,6 +149,30 @@ class UserServiceTest {
 						&& room.getMemberIds().equals(Set.of("user-3"))
 		));
 		verify(userRepository).deleteById("user-1");
+	}
+
+	@Test
+	void disconnectAndDeleteShouldPromoteOldestRemainingMemberWhenOwnerIsDeleted() {
+		User user = new User("owner-1", "Owner");
+		when(userRepository.findById("owner-1")).thenReturn(Optional.of(user));
+
+		LinkedHashSet<String> orderedMembers = new LinkedHashSet<>();
+		orderedMembers.add("owner-1");
+		orderedMembers.add("member-oldest");
+		orderedMembers.add("member-newest");
+
+		Room room = new Room("room-10", "Room 10", "R10", "owner-1", orderedMembers);
+		when(roomRepository.findAll()).thenReturn(List.of(room));
+		when(presenceService.removeUserFromAllRooms("owner-1")).thenReturn(List.of());
+
+		userService.disconnectAndDelete("owner-1");
+
+		verify(roomRepository).save(argThat(savedRoom ->
+				savedRoom.getId().equals("room-10")
+						&& savedRoom.getOwnerId().equals("member-oldest")
+						&& savedRoom.getMemberIds().equals(Set.of("member-oldest", "member-newest"))
+		));
+		verify(userRepository).deleteById("owner-1");
 	}
 
 	@Test

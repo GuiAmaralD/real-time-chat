@@ -173,6 +173,27 @@ class RoomServiceTest {
 		}
 
 		@Test
+		void leaveShouldTransferOwnershipToOldestRemainingMember() {
+			String roomId = "room-1";
+			String ownerId = "owner-1";
+			LinkedHashSet<String> members = new LinkedHashSet<>();
+			members.add(ownerId);
+			members.add("member-oldest");
+			members.add("member-newest");
+			Room room = room(roomId, "General", "GEN01", ownerId, members);
+
+			when(userRepository.findById(ownerId)).thenReturn(Optional.of(new User(ownerId, "owner")));
+			when(roomRepository.findById(roomId)).thenReturn(Optional.of(room));
+			when(roomRepository.save(any(Room.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+			roomService.leave(roomId, ownerId);
+
+			ArgumentCaptor<Room> captor = ArgumentCaptor.forClass(Room.class);
+			verify(roomRepository).save(captor.capture());
+			assertEquals("member-oldest", captor.getValue().getOwnerId());
+		}
+
+		@Test
 		void leaveShouldDeleteRoomWhenLastMemberLeaves() {
 			String roomId = "room-1";
 			String userId = "owner-1";

@@ -54,11 +54,9 @@ public class RoomService {
 		Room room = roomRepository.findByCode(request.code())
 				.orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "room not found"));
 
-		Set<String> members = room.getMemberIds();
-		if (members == null) {
-			members = new LinkedHashSet<>();
-			room.setMemberIds(members);
-		}
+		Set<String> members = room.getMemberIds() == null
+				? new LinkedHashSet<>()
+				: new LinkedHashSet<>(room.getMemberIds());
 
 		if (members.contains(request.userId())) {
 			return toRoomResponse(room);
@@ -69,6 +67,7 @@ public class RoomService {
 		}
 
 		members.add(request.userId());
+		room.setMemberIds(members);
 		return toRoomResponse(roomRepository.save(room));
 	}
 
@@ -98,7 +97,7 @@ public class RoomService {
 		}
 
 		if (userId.equals(room.getOwnerId())) {
-			room.setOwnerId(members.iterator().next());
+			room.setOwnerId(selectOldestMember(members));
 		}
 
 		room.setMemberIds(members);
@@ -127,6 +126,10 @@ public class RoomService {
 			code = UUID.randomUUID().toString();
 		} while (roomRepository.findByCode(code).isPresent());
 		return code;
+	}
+
+	private String selectOldestMember(Set<String> members) {
+		return members.iterator().next();
 	}
 
 	private long countRoomsForUser(String userId) {
