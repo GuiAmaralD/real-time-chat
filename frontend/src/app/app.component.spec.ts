@@ -17,7 +17,7 @@ describe('AppComponent', () => {
   let chatWebSocketServiceMock: jasmine.SpyObj<ChatWebSocketService>;
 
   beforeEach(async () => {
-    userServiceMock = jasmine.createSpyObj<UserService>('UserService', ['create']);
+    userServiceMock = jasmine.createSpyObj<UserService>('UserService', ['create', 'disconnectOnUnload']);
     roomServiceMock = jasmine.createSpyObj<RoomService>('RoomService', [
       'create',
       'joinByCode',
@@ -28,7 +28,10 @@ describe('AppComponent', () => {
     chatWebSocketServiceMock = jasmine.createSpyObj<ChatWebSocketService>('ChatWebSocketService', [
       'connect',
       'subscribeRoomMessages',
-      'sendRoomMessage'
+      'sendRoomMessage',
+      'subscribeRoomPresence',
+      'joinRoomPresence',
+      'leaveRoomPresence'
     ]);
 
     const createdUser: UserResponse = { id: 'user-1', nickname: 'Gui' };
@@ -61,6 +64,7 @@ describe('AppComponent', () => {
     const roomRealtimeHandlers = new Map<string, (message: MessageResponse) => void>();
 
     userServiceMock.create.and.returnValue(of(createdUser));
+    userServiceMock.disconnectOnUnload.and.stub();
     roomServiceMock.create.and.returnValue(of(createdRoom));
     roomServiceMock.joinByCode.and.returnValue(of(joinedRoom));
     roomServiceMock.listUsers.and.returnValue(of(roomUsers));
@@ -76,6 +80,9 @@ describe('AppComponent', () => {
         };
       }
     );
+    chatWebSocketServiceMock.subscribeRoomPresence.and.callFake(async () => () => undefined);
+    chatWebSocketServiceMock.joinRoomPresence.and.returnValue(Promise.resolve());
+    chatWebSocketServiceMock.leaveRoomPresence.and.returnValue(Promise.resolve());
     chatWebSocketServiceMock.sendRoomMessage.and.callFake(
       async (roomId: string, payload: { userId: string; content: string }) => {
         const handler = roomRealtimeHandlers.get(roomId);

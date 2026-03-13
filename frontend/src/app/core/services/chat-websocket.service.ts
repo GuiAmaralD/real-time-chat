@@ -6,6 +6,11 @@ import { apiConfig } from '../config/api.config';
 import { MessageResponse, SendMessageRequest } from '../models/message.model';
 
 type MessageHandler = (message: MessageResponse) => void;
+type PresenceHandler = (payload: unknown) => void;
+
+interface PresenceRequest {
+  userId: string;
+}
 
 @Injectable({ providedIn: 'root' })
 export class ChatWebSocketService implements OnDestroy {
@@ -13,8 +18,11 @@ export class ChatWebSocketService implements OnDestroy {
   private connectionPromise: Promise<void> | null = null;
   private isConnected = false;
 
-  private readonly handlersByTopic = new Map<string, Set<MessageHandler>>();
-  private readonly subscriptionsByTopic = new Map<string, StompSubscription>();
+  private readonly messageHandlersByTopic = new Map<string, Set<MessageHandler>>();
+  private readonly presenceHandlersByTopic = new Map<string, Set<PresenceHandler>>();
+
+  private readonly messageSubscriptionsByTopic = new Map<string, StompSubscription>();
+  private readonly presenceSubscriptionsByTopic = new Map<string, StompSubscription>();
 
   async connect(): Promise<void> {
     if (this.isConnected) {
@@ -58,7 +66,8 @@ export class ChatWebSocketService implements OnDestroy {
 
       this.client.onDisconnect = () => {
         this.isConnected = false;
-        this.subscriptionsByTopic.clear();
+        this.messageSubscriptionsByTopic.clear();
+        this.presenceSubscriptionsByTopic.clear();
       };
     });
 
@@ -87,18 +96,26 @@ export class ChatWebSocketService implements OnDestroy {
     });
   }
 
+  async joinRoomPresence(roomId: string, userId: string): Promise<void> {
+    await this.publishPresence(API_ENDPOINTS.websocket.appJoinRoomPresence(roomId), { userId });
+  }
+
+  async leaveRoomPresence(roomId: string, userId: string): Promise<void> {
+    await this.publishPresence(API_ENDPOINTS.websocket.appLeaveRoomPresence(roomId), { userId });
+  }
+
   async subscribeRoomMessages(roomId: string, handler: MessageHandler): Promise<() => void> {
     const topic = API_ENDPOINTS.websocket.topicRoomMessages(roomId);
 
-    const handlers = this.handlersByTopic.get(topic) ?? new Set<MessageHandler>();
+    const handlers = this.messageHandlersByTopic.get(topic) ?? new Set<MessageHandler>();
     handlers.add(handler);
-    this.handlersByTopic.set(topic, handlers);
+    this.messageHandlersByTopic.set(topic, handlers);
 
     await this.connect();
-    this.ensureSubscription(topic);
+    this.ensureMessageSubscription(topic);
 
     return () => {
-      const currentHandlers = this.handlersByTopic.get(topic);
+      const currentHandlers = this.messageHandlersByTopic.get(topic);
       if (!currentHandlers) {
         return;
       }
@@ -108,19 +125,52 @@ export class ChatWebSocketService implements OnDestroy {
         return;
       }
 
-      this.handlersByTopic.delete(topic);
-      this.subscriptionsByTopic.get(topic)?.unsubscribe();
-      this.subscriptionsByTopic.delete(topic);
+      this.messageHandlersByTopic.delete(topic);
+      this.messageSubscriptionsByTopic.get(topic)?.unsubscribe();
+      this.messageSubscriptionsByTopic.delete(topic);
+    };
+  }
+
+  async subscribeRoomPresence(roomId: string, handler: PresenceHandler): Promise<() => void> {
+    const topic = API_ENDPOINTS.websocket.topicRoomPresence(roomId);
+
+    const handlers = this.presenceHandlersByTopic.get(topic) ?? new Set<PresenceHandler>();
+    handlers.add(handler);
+    this.presenceHandlersByTopic.set(topic, handlers);
+
+    await this.connect();
+    this.ensurePresenceSubscription(topic);
+
+    return () => {
+      const currentHandlers = this.presenceHandlersByTopic.get(topic);
+      if (!currentHandlers) {
+        return;
+      }
+
+      currentHandlers.delete(handler);
+      if (currentHandlers.size > 0) {
+        return;
+      }
+
+      this.presenceHandlersByTopic.delete(topic);
+      this.presenceSubscriptionsByTopic.get(topic)?.unsubscribe();
+      this.presenceSubscriptionsByTopic.delete(topic);
     };
   }
 
   disconnect(): void {
-    this.handlersByTopic.clear();
+    this.messageHandlersByTopic.clear();
+    this.presenceHandlersByTopic.clear();
 
-    for (const subscription of this.subscriptionsByTopic.values()) {
+    for (const subscription of this.messageSubscriptionsByTopic.values()) {
       subscription.unsubscribe();
     }
-    this.subscriptionsByTopic.clear();
+    this.messageSubscriptionsByTopic.clear();
+
+    for (const subscription of this.presenceSubscriptionsByTopic.values()) {
+      subscription.unsubscribe();
+    }
+    this.presenceSubscriptionsByTopic.clear();
 
     this.client?.deactivate();
     this.client = null;
@@ -132,8 +182,8 @@ export class ChatWebSocketService implements OnDestroy {
     this.disconnect();
   }
 
-  private ensureSubscription(topic: string): void {
-    if (!this.client || !this.isConnected || this.subscriptionsByTopic.has(topic)) {
+  private ensureMessageSubscription(topic: string): void {
+    if (!this.client || !this.isConnected || this.messageSubscriptionsByTopic.has(topic)) {
       return;
     }
 
@@ -143,7 +193,7 @@ export class ChatWebSocketService implements OnDestroy {
         return;
       }
 
-      const handlers = this.handlersByTopic.get(topic);
+      const handlers = this.messageHandlersByTopic.get(topic);
       if (!handlers) {
         return;
       }
@@ -153,26 +203,74 @@ export class ChatWebSocketService implements OnDestroy {
       }
     });
 
-    this.subscriptionsByTopic.set(topic, subscription);
+    this.messageSubscriptionsByTopic.set(topic, subscription);
+  }
+
+  private ensurePresenceSubscription(topic: string): void {
+    if (!this.client || !this.isConnected || this.presenceSubscriptionsByTopic.has(topic)) {
+      return;
+    }
+
+    const subscription = this.client.subscribe(topic, (messageFrame: IMessage) => {
+      const payload = this.parseJson(messageFrame.body);
+      if (payload === null) {
+        return;
+      }
+
+      const handlers = this.presenceHandlersByTopic.get(topic);
+      if (!handlers) {
+        return;
+      }
+
+      for (const handler of handlers) {
+        handler(payload);
+      }
+    });
+
+    this.presenceSubscriptionsByTopic.set(topic, subscription);
   }
 
   private resubscribeAllTopics(): void {
-    for (const topic of this.handlersByTopic.keys()) {
-      this.ensureSubscription(topic);
+    for (const topic of this.messageHandlersByTopic.keys()) {
+      this.ensureMessageSubscription(topic);
+    }
+
+    for (const topic of this.presenceHandlersByTopic.keys()) {
+      this.ensurePresenceSubscription(topic);
     }
   }
 
   private parseMessage(rawBody: string): MessageResponse | null {
-    try {
-      const parsed = JSON.parse(rawBody) as MessageResponse;
-      if (!parsed || typeof parsed !== 'object') {
-        return null;
-      }
+    const parsed = this.parseJson(rawBody);
+    if (!parsed || typeof parsed !== 'object') {
+      return null;
+    }
 
-      return parsed;
+    return parsed as MessageResponse;
+  }
+
+  private parseJson(rawBody: string): unknown | null {
+    try {
+      return JSON.parse(rawBody);
     } catch {
       return null;
     }
+  }
+
+  private async publishPresence(destination: string, payload: PresenceRequest): Promise<void> {
+    await this.connect();
+
+    if (!this.client || !this.isConnected) {
+      throw new Error('Realtime connection is not available.');
+    }
+
+    this.client.publish({
+      destination,
+      headers: {
+        'content-type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
   }
 
   private resolveBrokerUrl(): string {

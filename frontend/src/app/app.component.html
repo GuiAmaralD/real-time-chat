@@ -70,29 +70,54 @@
 
     <main class="chat-main">
       @if (activeRoom; as room) {
-        <header class="chat-header">
-          <h3>{{ room.name }} (#{{ room.code }})</h3>
-        </header>
+        <section class="chat-content">
+          <header class="chat-header">
+            <h3>{{ room.name }} (#{{ room.code }})</h3>
+          </header>
 
-        <section #messageList class="message-list">
-          @for (message of room.messages; track message.id) {
-            <article class="message" [class.mine]="message.mine">
-              <p class="author">{{ message.author }}</p>
-              <p class="body">{{ message.body }}</p>
-              <time>{{ message.createdAt | date: 'HH:mm:ss' }}</time>
-            </article>
-          }
+          <section #messageList class="message-list">
+            @for (message of room.messages; track message.id) {
+              <article class="message" [class.mine]="message.mine">
+                <p class="author">{{ message.author }}</p>
+                <p class="body">{{ message.body }}</p>
+                <time>{{ message.createdAt | date: 'HH:mm:ss' }}</time>
+              </article>
+            }
+          </section>
+
+          <footer class="composer">
+            <textarea
+              [(ngModel)]="draft"
+              (keydown)="handleComposerKeydown($event)"
+              rows="2"
+              placeholder="Type a message"
+            ></textarea>
+            <button type="button" (click)="sendMessage()" [disabled]="!draft.trim()">Send</button>
+          </footer>
         </section>
 
-        <footer class="composer">
-          <textarea
-            [(ngModel)]="draft"
-            (keydown)="handleComposerKeydown($event)"
-            rows="2"
-            placeholder="Type a message"
-          ></textarea>
-          <button type="button" (click)="sendMessage()" [disabled]="!draft.trim()">Send</button>
-        </footer>
+        <aside class="members-rail" [class.open]="showMembersPanel">
+          <button type="button" class="users-toggle-rail" (click)="toggleMembersPanel()">
+            Online users ({{ room.members.length }})
+          </button>
+
+          @if (showMembersPanel) {
+            <div class="members-panel">
+              <div class="room-users-list">
+                @for (member of room.members; track member.id) {
+                  <span class="room-user" [class.owner]="member.role === 'owner'">
+                    <span
+                      class="member-avatar"
+                      [class.owner]="member.role === 'owner'"
+                      aria-hidden="true"
+                    ></span>
+                    {{ member.nickname }}
+                  </span>
+                }
+              </div>
+            </div>
+          }
+        </aside>
       } @else {
         <section class="empty-state">
           <p>Create a room or search by code to get started.</p>

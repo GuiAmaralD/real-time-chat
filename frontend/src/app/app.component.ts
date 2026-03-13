@@ -1,10 +1,10 @@
 import { DatePipe } from '@angular/common';
-import { Component, ElementRef, OnDestroy, ViewChild, inject } from '@angular/core';
+import { Component, ElementRef, HostListener, OnDestroy, ViewChild, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 
 import { MessageResponse } from './core/models/message.model';
-import { RoomResponse } from './core/models/room.model';
+import { RoomResponse, RoomUserResponse } from './core/models/room.model';
 import { ChatWebSocketService } from './core/services/chat-websocket.service';
 import { MessageService } from './core/services/message.service';
 import { RoomService } from './core/services/room.service';
@@ -25,7 +25,9 @@ interface ChatRoom {
   id: string;
   code: string;
   name: string;
+  ownerId: string;
   messages: ChatMessage[];
+  members: RoomUserResponse[];
   usersById: Record<string, string>;
 }
 
@@ -44,6 +46,9 @@ export class AppComponent implements OnDestroy {
 
   private currentUserId: string | null = null;
   private readonly roomRealtimeUnsubscribers = new Map<string, () => void>();
+  private readonly roomPresenceUnsubscribers = new Map<string, () => void>();
+  private readonly presenceJoinedRoomIds = new Set<string>();
+  private disconnectTriggered = false;
 
   protected screenStep: ScreenStep = 'nickname';
   protected roomActionMode: RoomActionMode = 'none';
@@ -61,6 +66,7 @@ export class AppComponent implements OnDestroy {
 
   protected joinedRooms: ChatRoom[] = [];
   protected activeRoomCode: string | null = null;
+  protected showMembersPanel = false;
 
   protected draft = '';
 
@@ -165,8 +171,15 @@ export class AppComponent implements OnDestroy {
   }
 
   protected selectRoom(code: string): void {
+    const previousRoomCode = this.activeRoomCode;
     this.activeRoomCode = code;
+    this.showMembersPanel = false;
+    void this.syncPresenceForActiveRoom(previousRoomCode, code);
     this.scrollToBottom();
+  }
+
+  protected toggleMembersPanel(): void {
+    this.showMembersPanel = !this.showMembersPanel;
   }
 
   protected async sendMessage(): Promise<void> {
@@ -232,17 +245,24 @@ export class AppComponent implements OnDestroy {
       id: room.id,
       code: room.code,
       name: room.name,
+      ownerId: room.ownerId,
+      members: this.sortMembers(roomUsers),
       usersById,
       messages
     };
 
     this.upsertRoom(joinedRoom);
+
     try {
       await this.ensureRealtimeSubscription(room.id);
+      await this.ensurePresenceRealtimeSubscription(room.id);
     } catch {
       this.roomInfo = `Room #${room.code} opened without realtime updates.`;
     }
+    const previousRoomCode = this.activeRoomCode;
     this.activeRoomCode = joinedRoom.code;
+    this.showMembersPanel = false;
+    void this.syncPresenceForActiveRoom(previousRoomCode, joinedRoom.code);
     this.scrollToBottom();
   }
 
@@ -256,6 +276,75 @@ export class AppComponent implements OnDestroy {
     });
 
     this.roomRealtimeUnsubscribers.set(roomId, unsubscribe);
+  }
+
+  private async ensurePresenceRealtimeSubscription(roomId: string): Promise<void> {
+    if (this.roomPresenceUnsubscribers.has(roomId)) {
+      return;
+    }
+
+    const unsubscribe = await this.chatWebSocketService.subscribeRoomPresence(roomId, (payload) => {
+      this.handlePresenceUpdate(roomId, payload);
+    });
+
+    this.roomPresenceUnsubscribers.set(roomId, unsubscribe);
+  }
+
+  private async syncPresenceForActiveRoom(
+    previousRoomCode: string | null,
+    nextRoomCode: string | null
+  ): Promise<void> {
+    if (!this.currentUserId) {
+      return;
+    }
+
+    const previousRoomId = this.joinedRooms.find((room) => room.code === previousRoomCode)?.id ?? null;
+    const nextRoomId = this.joinedRooms.find((room) => room.code === nextRoomCode)?.id ?? null;
+
+    if (previousRoomId && previousRoomId !== nextRoomId && this.presenceJoinedRoomIds.has(previousRoomId)) {
+      try {
+        await this.chatWebSocketService.leaveRoomPresence(previousRoomId, this.currentUserId);
+      } catch {
+        // Keep UI responsive even if leave presence fails.
+      } finally {
+        this.presenceJoinedRoomIds.delete(previousRoomId);
+      }
+    }
+
+    if (nextRoomId && !this.presenceJoinedRoomIds.has(nextRoomId)) {
+      try {
+        await this.chatWebSocketService.joinRoomPresence(nextRoomId, this.currentUserId);
+        this.presenceJoinedRoomIds.add(nextRoomId);
+      } catch {
+        // Presence join can fail independently from chat loading.
+      }
+    }
+  }
+
+  private handlePresenceUpdate(roomId: string, payload: unknown): void {
+    const room = this.joinedRooms.find((joinedRoom) => joinedRoom.id === roomId);
+    if (!room) {
+      return;
+    }
+
+    const presenceMembers = this.extractPresenceMembers(payload, room.ownerId);
+    if (!presenceMembers) {
+      return;
+    }
+
+    const sortedMembers = this.sortMembers(presenceMembers);
+    const usersById = { ...room.usersById };
+    for (const member of sortedMembers) {
+      usersById[member.id] = member.nickname;
+    }
+
+    const updatedRoom: ChatRoom = {
+      ...room,
+      members: sortedMembers,
+      usersById
+    };
+
+    this.upsertRoom(updatedRoom);
   }
 
   private handleIncomingMessage(roomId: string, message: MessageResponse): void {
@@ -278,8 +367,11 @@ export class AppComponent implements OnDestroy {
       usersById[message.userId] = message.nickname;
     }
 
+    const members = this.upsertMember(room.members, message, room.ownerId);
+
     const updatedRoom: ChatRoom = {
       ...room,
+      members,
       usersById,
       messages: [...room.messages, this.toChatMessage(message, usersById)].sort(
         (left, right) => left.createdAt.getTime() - right.createdAt.getTime()
@@ -304,6 +396,106 @@ export class AppComponent implements OnDestroy {
     };
   }
 
+  private upsertMember(
+    members: RoomUserResponse[],
+    message: MessageResponse,
+    ownerId: string
+  ): RoomUserResponse[] {
+    const nickname = message.nickname?.trim();
+    if (!nickname) {
+      return members;
+    }
+
+    const existingMemberIndex = members.findIndex((member) => member.id === message.userId);
+    if (existingMemberIndex === -1) {
+      return this.sortMembers([
+        ...members,
+        { id: message.userId, nickname, role: message.userId === ownerId ? 'owner' : 'member' }
+      ]);
+    }
+
+    const existingMember = members[existingMemberIndex];
+    if (existingMember.nickname === nickname) {
+      return members;
+    }
+
+    const updatedMembers = members.map((member, index) =>
+      index === existingMemberIndex ? { ...member, nickname } : member
+    );
+    return this.sortMembers(updatedMembers);
+  }
+
+  private extractPresenceMembers(payload: unknown, ownerId: string): RoomUserResponse[] | null {
+    if (Array.isArray(payload)) {
+      return this.normalizePresenceMembers(payload, ownerId);
+    }
+
+    if (!this.isRecord(payload)) {
+      return null;
+    }
+
+    const candidates = [payload['members'], payload['users'], payload['onlineUsers'], payload['payload']];
+    for (const candidate of candidates) {
+      if (!Array.isArray(candidate)) {
+        continue;
+      }
+
+      const normalized = this.normalizePresenceMembers(candidate, ownerId);
+      if (normalized.length > 0) {
+        return normalized;
+      }
+    }
+
+    return null;
+  }
+
+  private normalizePresenceMembers(items: unknown[], ownerId: string): RoomUserResponse[] {
+    const members: RoomUserResponse[] = [];
+
+    for (const item of items) {
+      const normalized = this.normalizePresenceMember(item, ownerId);
+      if (normalized) {
+        members.push(normalized);
+      }
+    }
+
+    return members;
+  }
+
+  private normalizePresenceMember(item: unknown, ownerId: string): RoomUserResponse | null {
+    if (!this.isRecord(item)) {
+      return null;
+    }
+
+    const id = typeof item['id'] === 'string'
+      ? item['id']
+      : (typeof item['userId'] === 'string' ? item['userId'] : null);
+    const nickname = typeof item['nickname'] === 'string' ? item['nickname'] : null;
+    if (!id || !nickname) {
+      return null;
+    }
+
+    const role = item['role'] === 'owner' || id === ownerId ? 'owner' : 'member';
+    return { id, nickname, role };
+  }
+
+  private isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null;
+  }
+
+  private sortMembers(members: RoomUserResponse[]): RoomUserResponse[] {
+    return [...members].sort((left, right) => {
+      if (left.role === 'owner' && right.role !== 'owner') {
+        return -1;
+      }
+      if (left.role !== 'owner' && right.role === 'owner') {
+        return 1;
+      }
+
+      return left.nickname.localeCompare(right.nickname);
+    });
+  }
+
   private upsertRoom(room: ChatRoom): void {
     const index = this.joinedRooms.findIndex((joinedRoom) => joinedRoom.code === room.code);
     if (index === -1) {
@@ -324,11 +516,40 @@ export class AppComponent implements OnDestroy {
     return fallback;
   }
 
+  @HostListener('window:beforeunload')
+  @HostListener('window:pagehide')
+  protected handleWindowUnload(): void {
+    this.triggerUserDisconnect();
+  }
+
   ngOnDestroy(): void {
+    this.triggerUserDisconnect();
+
+    if (this.currentUserId) {
+      for (const roomId of this.presenceJoinedRoomIds) {
+        void this.chatWebSocketService.leaveRoomPresence(roomId, this.currentUserId);
+      }
+    }
+
     for (const unsubscribe of this.roomRealtimeUnsubscribers.values()) {
       unsubscribe();
     }
     this.roomRealtimeUnsubscribers.clear();
+
+    for (const unsubscribe of this.roomPresenceUnsubscribers.values()) {
+      unsubscribe();
+    }
+    this.roomPresenceUnsubscribers.clear();
+    this.presenceJoinedRoomIds.clear();
+  }
+
+  private triggerUserDisconnect(): void {
+    if (this.disconnectTriggered || !this.currentUserId) {
+      return;
+    }
+
+    this.disconnectTriggered = true;
+    this.userService.disconnectOnUnload(this.currentUserId);
   }
 
   private scrollToBottom(): void {
