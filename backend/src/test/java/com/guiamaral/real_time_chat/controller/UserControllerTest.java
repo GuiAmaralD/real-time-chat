@@ -1,8 +1,10 @@
 package com.guiamaral.real_time_chat.controller;
 
 import com.guiamaral.real_time_chat.dto.user.CreateUserRequest;
+import com.guiamaral.real_time_chat.dto.presence.RoomPresenceResponse;
 import com.guiamaral.real_time_chat.dto.user.RedisPingResponse;
 import com.guiamaral.real_time_chat.dto.user.UserResponse;
+import com.guiamaral.real_time_chat.service.PresenceService;
 import com.guiamaral.real_time_chat.service.UserService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -11,6 +13,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.Mockito.verify;
@@ -22,11 +25,14 @@ class UserControllerTest {
 	@Mock
 	private UserService userService;
 
+	@Mock
+	private SimpMessagingTemplate messagingTemplate;
+
 	private UserController userController;
 
 	@BeforeEach
 	void setUp() {
-		userController = new UserController(userService);
+		userController = new UserController(userService, messagingTemplate);
 	}
 
 	@Test
@@ -52,5 +58,31 @@ class UserControllerTest {
 
 		assertEquals("PONG", response.redis());
 		verify(userService).pingRedis();
+	}
+
+	@Test
+	void disconnectShouldDeleteUserAndBroadcastPresenceUpdates() {
+		RoomPresenceResponse payload = new RoomPresenceResponse("room-1", 0, java.util.List.of());
+		var updates = java.util.List.of(new PresenceService.PresenceUpdate("room-1", payload));
+		when(userService.disconnectAndDelete("user-1")).thenReturn(updates);
+
+		ResponseEntity<Void> response = userController.disconnect("user-1");
+
+		assertEquals(HttpStatus.NO_CONTENT, response.getStatusCode());
+		verify(userService).disconnectAndDelete("user-1");
+		verify(messagingTemplate).convertAndSend("/topic/rooms/room-1/presence", payload);
+	}
+
+	@Test
+	void deleteShouldDeleteUserAndBroadcastPresenceUpdates() {
+		RoomPresenceResponse payload = new RoomPresenceResponse("room-1", 1, java.util.List.of());
+		var updates = java.util.List.of(new PresenceService.PresenceUpdate("room-1", payload));
+		when(userService.disconnectAndDelete("user-1")).thenReturn(updates);
+
+		ResponseEntity<Void> response = userController.delete("user-1");
+
+		assertEquals(HttpStatus.NO_CONTENT, response.getStatusCode());
+		verify(userService).disconnectAndDelete("user-1");
+		verify(messagingTemplate).convertAndSend("/topic/rooms/room-1/presence", payload);
 	}
 }

@@ -75,6 +75,36 @@ public class PresenceService {
 		}
 	}
 
+	public List<PresenceUpdate> removeUserFromAllRooms(String userId) {
+		synchronized (lock) {
+			List<PresenceUpdate> updates = new ArrayList<>();
+
+			List<String> sessionIds = sessionsById.entrySet().stream()
+					.filter(entry -> entry.getValue().userId().equals(userId))
+					.map(Map.Entry::getKey)
+					.toList();
+			for (String sessionId : sessionIds) {
+				updates.addAll(removeSessionLocked(sessionId));
+			}
+
+			List<String> roomIds = new ArrayList<>(roomUserSessionCounts.keySet());
+			for (String roomId : roomIds) {
+				Map<String, Integer> sessionCounts = roomUserSessionCounts.get(roomId);
+				if (sessionCounts == null || !sessionCounts.containsKey(userId)) {
+					continue;
+				}
+
+				sessionCounts.remove(userId);
+				if (sessionCounts.isEmpty()) {
+					roomUserSessionCounts.remove(roomId);
+				}
+				updates.add(new PresenceUpdate(roomId, buildRoomPresenceLocked(roomId)));
+			}
+
+			return mergeUpdatesByRoom(updates);
+		}
+	}
+
 	private List<PresenceUpdate> removeSessionLocked(String sessionId) {
 		SessionPresence previous = sessionsById.remove(sessionId);
 		if (previous == null) {

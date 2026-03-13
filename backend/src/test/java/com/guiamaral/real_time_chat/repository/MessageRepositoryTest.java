@@ -43,11 +43,13 @@ class MessageRepositoryTest {
 		Message first = new Message();
 		first.setRoomId(roomId);
 		first.setUserId("user-1");
+		first.setUserNickname("Gui");
 		first.setContent("first");
 
 		Message second = new Message();
 		second.setRoomId(roomId);
 		second.setUserId("user-1");
+		second.setUserNickname("Gui");
 		second.setContent("second");
 
 		messageRepository.append(first);
@@ -58,6 +60,7 @@ class MessageRepositoryTest {
 		assertEquals(2, messages.size());
 		assertEquals("first", messages.get(0).getContent());
 		assertEquals("second", messages.get(1).getContent());
+		assertEquals("Gui", messages.get(0).getUserNickname());
 		assertTrue(messages.get(0).getSentAt().compareTo(messages.get(1).getSentAt()) <= 0);
 	}
 
@@ -72,6 +75,7 @@ class MessageRepositoryTest {
 				Map.of(
 						"roomId", roomId,
 						"userId", "user-1",
+						"userNickname", "Gui",
 						"content", "old",
 						"sentAt", Long.toString(oldTimestamp)
 				)
@@ -81,6 +85,7 @@ class MessageRepositoryTest {
 		Message recent = new Message();
 		recent.setRoomId(roomId);
 		recent.setUserId("user-1");
+		recent.setUserNickname("Gui");
 		recent.setContent("recent");
 		messageRepository.append(recent);
 

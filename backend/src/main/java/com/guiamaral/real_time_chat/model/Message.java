@@ -7,6 +7,7 @@ public class Message {
 	private String id;
 	private String roomId;
 	private String userId;
+	private String userNickname;
 	private String content;
 	private Instant sentAt;
 
@@ -14,9 +15,14 @@ public class Message {
 	}
 
 	public Message(String id, String roomId, String userId, String content, Instant sentAt) {
+		this(id, roomId, userId, null, content, sentAt);
+	}
+
+	public Message(String id, String roomId, String userId, String userNickname, String content, Instant sentAt) {
 		this.id = id;
 		this.roomId = roomId;
 		this.userId = userId;
+		this.userNickname = userNickname;
 		this.content = content;
 		this.sentAt = sentAt;
 	}
@@ -51,6 +57,14 @@ public class Message {
 
 	public void setContent(String content) {
 		this.content = content;
+	}
+
+	public String getUserNickname() {
+		return userNickname;
+	}
+
+	public void setUserNickname(String userNickname) {
+		this.userNickname = userNickname;
 	}
 
 	public Instant getSentAt() {

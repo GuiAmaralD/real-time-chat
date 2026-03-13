@@ -36,6 +36,7 @@ public class RedisMessageRepository implements MessageRepository {
 		Map<String, String> fields = new HashMap<>();
 		fields.put("roomId", message.getRoomId());
 		fields.put("userId", message.getUserId());
+		fields.put("userNickname", safeString(message.getUserNickname()));
 		fields.put("content", message.getContent());
 		fields.put("sentAt", Long.toString(now.toEpochMilli()));
 
@@ -80,6 +81,7 @@ public class RedisMessageRepository implements MessageRepository {
 			message.setId(record.getId().getValue());
 			message.setRoomId(stringValue(values.get("roomId"), roomId));
 			message.setUserId(stringValue(values.get("userId"), ""));
+			message.setUserNickname(stringValue(values.get("userNickname"), ""));
 			message.setContent(stringValue(values.get("content"), ""));
 			message.setSentAt(toSentAt(values.get("sentAt"), record.getId()));
 
@@ -97,6 +99,10 @@ public class RedisMessageRepository implements MessageRepository {
 
 	private String stringValue(Object value, String defaultValue) {
 		return value == null ? defaultValue : value.toString();
+	}
+
+	private String safeString(String value) {
+		return value == null ? "" : value;
 	}
 
 	private Instant toSentAt(Object value, RecordId recordId) {

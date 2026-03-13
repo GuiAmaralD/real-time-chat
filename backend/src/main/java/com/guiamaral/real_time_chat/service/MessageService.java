@@ -2,10 +2,7 @@ package com.guiamaral.real_time_chat.service;
 
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
-import java.util.stream.Collectors;
-import java.util.stream.StreamSupport;
 
 import com.guiamaral.real_time_chat.dto.message.MessageResponse;
 import com.guiamaral.real_time_chat.dto.message.SendMessageRequest;
@@ -47,10 +44,11 @@ public class MessageService {
 		Message message = new Message();
 		message.setRoomId(roomId);
 		message.setUserId(request.userId());
+		message.setUserNickname(sender.getNickname());
 		message.setContent(request.content().trim());
 
 		Message savedMessage = messageRepository.append(message);
-		return toResponse(savedMessage, sender.getNickname());
+		return toResponse(savedMessage);
 	}
 
 	public List<MessageResponse> listRecent(String roomId, String userId, Integer limit) {
@@ -59,14 +57,8 @@ public class MessageService {
 		ensureRoomMembership(room, userId);
 
 		int resolvedLimit = resolveLimit(limit);
-		List<Message> messages = messageRepository.findRecentByRoomId(roomId, resolvedLimit);
-		Map<String, String> nicknamesByUserId = resolveNicknamesByUserId(messages);
-
-		return messages.stream()
-				.map(message -> toResponse(
-						message,
-						nicknamesByUserId.getOrDefault(message.getUserId(), "")
-				))
+		return messageRepository.findRecentByRoomId(roomId, resolvedLimit).stream()
+				.map(this::toResponse)
 				.toList();
 	}
 
@@ -106,25 +98,12 @@ public class MessageService {
 		return Math.min(limit, MAX_LIMIT);
 	}
 
-	private Map<String, String> resolveNicknamesByUserId(List<Message> messages) {
-		Set<String> userIds = messages.stream()
-				.map(Message::getUserId)
-				.collect(Collectors.toCollection(LinkedHashSet::new));
-
-		if (userIds.isEmpty()) {
-			return Map.of();
-		}
-
-		return StreamSupport.stream(userRepository.findAllById(userIds).spliterator(), false)
-				.collect(Collectors.toMap(User::getId, User::getNickname));
-	}
-
-	private MessageResponse toResponse(Message message, String userNickname) {
+	private MessageResponse toResponse(Message message) {
 		return new MessageResponse(
 				message.getId(),
 				message.getRoomId(),
 				message.getUserId(),
-				userNickname,
+				message.getUserNickname() == null ? "" : message.getUserNickname(),
 				message.getContent(),
 				message.getSentAt()
 		);
