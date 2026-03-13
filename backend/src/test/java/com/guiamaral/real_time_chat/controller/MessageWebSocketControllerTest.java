@@ -39,6 +39,7 @@ class MessageWebSocketControllerTest {
 				"1-0",
 				roomId,
 				"user-1",
+				"gui",
 				"hello",
 				Instant.parse("2026-03-12T16:00:00Z")
 		);

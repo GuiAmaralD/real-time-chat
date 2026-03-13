@@ -39,6 +39,7 @@ class MessageControllerTest {
 				"1700000000000-0",
 				"room-1",
 				"user-1",
+				"gui",
 				"hello",
 				Instant.parse("2026-03-12T16:00:00Z")
 		);
@@ -55,8 +56,8 @@ class MessageControllerTest {
 	@Test
 	void listRecentShouldReturnMessages() {
 		List<MessageResponse> messages = List.of(
-				new MessageResponse("1-0", "room-1", "user-1", "a", Instant.parse("2026-03-12T16:00:00Z")),
-				new MessageResponse("2-0", "room-1", "user-2", "b", Instant.parse("2026-03-12T16:01:00Z"))
+				new MessageResponse("1-0", "room-1", "user-1", "gui", "a", Instant.parse("2026-03-12T16:00:00Z")),
+				new MessageResponse("2-0", "room-1", "user-2", "ana", "b", Instant.parse("2026-03-12T16:01:00Z"))
 		);
 		when(messageService.listRecent("room-1", "user-1", 20)).thenReturn(messages);
 

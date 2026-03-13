@@ -2,12 +2,15 @@ package com.guiamaral.real_time_chat.service;
 
 import java.util.Objects;
 import java.util.UUID;
+import java.util.stream.StreamSupport;
 
 import com.guiamaral.real_time_chat.dto.user.CreateUserRequest;
 import com.guiamaral.real_time_chat.dto.user.RedisPingResponse;
 import com.guiamaral.real_time_chat.dto.user.UserResponse;
+import com.guiamaral.real_time_chat.exception.ApiException;
 import com.guiamaral.real_time_chat.model.User;
 import com.guiamaral.real_time_chat.repository.UserRepository;
+import org.springframework.http.HttpStatus;
 import org.springframework.data.redis.connection.RedisConnection;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -25,12 +28,26 @@ public class UserService {
 	}
 
 	public UserResponse create(CreateUserRequest request) {
+		String normalizedNickname = request.nickname().trim();
+		ensureNicknameAvailable(normalizedNickname);
+
 		User user = new User();
 		user.setId(UUID.randomUUID().toString());
-		user.setNickname(request.nickname());
+		user.setNickname(normalizedNickname);
 
 		User savedUser = userRepository.save(user);
 		return new UserResponse(savedUser.getId(), savedUser.getNickname());
+	}
+
+	private void ensureNicknameAvailable(String nickname) {
+		boolean nicknameExists = StreamSupport.stream(userRepository.findAll().spliterator(), false)
+				.map(User::getNickname)
+				.filter(Objects::nonNull)
+				.anyMatch(existingNickname -> existingNickname.equalsIgnoreCase(nickname));
+
+		if (nicknameExists) {
+			throw new ApiException(HttpStatus.CONFLICT, "nickname already exists");
+		}
 	}
 
 	public RedisPingResponse pingRedis() {

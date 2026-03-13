@@ -71,6 +71,7 @@ class MessageServiceTest {
 		assertEquals("user-1", persisted.getUserId());
 		assertEquals("hello", persisted.getContent());
 		assertEquals("1700000000000-0", response.id());
+		assertEquals("nick", response.userNickname());
 	}
 
 	@Test
@@ -123,12 +124,14 @@ class MessageServiceTest {
 				new Message("2-0", "room-1", "owner-1", "second", Instant.parse("2026-03-12T16:00:01Z"))
 		);
 		when(messageRepository.findRecentByRoomId("room-1", 2)).thenReturn(messages);
+		when(userRepository.findAllById(Set.of("owner-1"))).thenReturn(List.of(new User("owner-1", "owner")));
 
 		List<MessageResponse> response = messageService.listRecent("room-1", "owner-1", 2);
 
 		assertEquals(2, response.size());
 		assertEquals("first", response.get(0).content());
 		assertEquals("second", response.get(1).content());
+		assertEquals("owner", response.get(0).userNickname());
 		assertTrue(response.get(0).sentAt().isBefore(response.get(1).sentAt()));
 	}
 
