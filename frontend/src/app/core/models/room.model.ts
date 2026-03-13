@@ -1,6 +1,5 @@
 export interface CreateRoomRequest {
   name: string;
-  code: string;
   ownerId: string;
 }
 

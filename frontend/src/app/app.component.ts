@@ -58,7 +58,6 @@ export class AppComponent implements OnDestroy {
   protected nicknameError = '';
 
   protected createRoomNameInput = '';
-  protected createRoomCodeInput = '';
   protected searchRoomCodeInput = '';
 
   protected roomError = '';
@@ -112,10 +111,9 @@ export class AppComponent implements OnDestroy {
     }
 
     const roomName = this.createRoomNameInput.trim();
-    const roomCode = this.createRoomCodeInput.trim().toUpperCase();
 
-    if (roomName.length < 2 || roomCode.length < 3) {
-      this.roomError = 'Provide room name (2+) and code (3+) to create a room.';
+    if (roomName.length < 2) {
+      this.roomError = 'Provide room name (2+) to create a room.';
       return;
     }
 
@@ -123,14 +121,12 @@ export class AppComponent implements OnDestroy {
       const room = await firstValueFrom(
         this.roomService.create({
           name: roomName,
-          code: roomCode,
           ownerId: this.currentUserId
         })
       );
 
       await this.openRoom(room);
       this.createRoomNameInput = '';
-      this.createRoomCodeInput = '';
       this.roomActionMode = 'none';
       this.roomError = '';
       this.roomInfo = `Room #${room.code} created and opened.`;

@@ -141,7 +141,7 @@ describe('AppComponent', () => {
     expect(chatWebSocketServiceMock.connect).toHaveBeenCalled();
   });
 
-  it('should create a room with name and code', async () => {
+  it('should create a room with name only', async () => {
     const fixture = TestBed.createComponent(AppComponent);
     const component = fixture.componentInstance as any;
 
@@ -149,14 +149,12 @@ describe('AppComponent', () => {
     await component.enterChat();
 
     component.createRoomNameInput = 'My Room';
-    component.createRoomCodeInput = 'myroom123';
     await component.createRoom();
 
     expect(component.joinedRooms.length).toBe(1);
     expect(component.activeRoom?.code).toBe('MYROOM123');
     expect(roomServiceMock.create).toHaveBeenCalledWith({
       name: 'My Room',
-      code: 'MYROOM123',
       ownerId: 'user-1'
     });
     expect(chatWebSocketServiceMock.subscribeRoomMessages).toHaveBeenCalledWith(
@@ -233,7 +231,6 @@ describe('AppComponent', () => {
     await component.enterChat();
 
     component.createRoomNameInput = 'My Room';
-    component.createRoomCodeInput = 'myroom123';
     await component.createRoom();
 
     component.searchRoomCodeInput = 'ws-intro';
