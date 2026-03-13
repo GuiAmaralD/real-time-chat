@@ -129,7 +129,7 @@ export class AppComponent implements OnDestroy {
       this.createRoomNameInput = '';
       this.roomActionMode = 'none';
       this.roomError = '';
-      this.roomInfo = `Room #${room.code} created and opened.`;
+      this.roomInfo = `Room "${room.name}" created and opened.`;
     } catch (error) {
       this.roomError = this.getErrorMessage(error, 'Unable to create room.');
     }
@@ -160,7 +160,7 @@ export class AppComponent implements OnDestroy {
       this.searchRoomCodeInput = '';
       this.roomActionMode = 'none';
       this.roomError = '';
-      this.roomInfo = `Room #${room.code} opened.`;
+      this.roomInfo = `Room "${room.name}" opened.`;
     } catch (error) {
       this.roomError = this.getErrorMessage(error, `Room with code ${roomCode} was not found.`);
     }
@@ -211,7 +211,7 @@ export class AppComponent implements OnDestroy {
     }
 
     this.roomError = '';
-    this.roomInfo = `You left room #${room.code}.`;
+    this.roomInfo = `You left room "${room.name}".`;
   }
 
   protected toggleMembersPanel(): void {
@@ -293,7 +293,7 @@ export class AppComponent implements OnDestroy {
       await this.ensureRealtimeSubscription(room.id);
       await this.ensurePresenceRealtimeSubscription(room.id);
     } catch {
-      this.roomInfo = `Room #${room.code} opened without realtime updates.`;
+      this.roomInfo = `Room "${room.name}" opened without realtime updates.`;
     }
     const previousRoomCode = this.activeRoomCode;
     this.activeRoomCode = joinedRoom.code;

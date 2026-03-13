@@ -21,7 +21,6 @@
 } @else {
   <section class="chat-layout">
     <aside class="sidebar">
-      <h2>Study Chat</h2>
       <p class="meta">Nickname: <strong>{{ nickname }}</strong></p>
 
       <div class="actions">
@@ -62,7 +61,7 @@
               [class.active]="room.code === activeRoomCode"
               (click)="selectRoom(room.code)"
             >
-              {{ room.name }} (#{{ room.code }})
+              {{ room.name }}
             </button>
             <button
               type="button"
