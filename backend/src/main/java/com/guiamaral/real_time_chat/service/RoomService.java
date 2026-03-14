@@ -2,6 +2,7 @@ package com.guiamaral.real_time_chat.service;
 
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
@@ -51,8 +52,7 @@ public class RoomService {
 
 	public RoomResponse joinByCode(JoinRoomRequest request) {
 		findUserOrThrow(request.userId(), "user not found");
-		Room room = roomRepository.findByCode(request.code())
-				.orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "room not found"));
+		Room room = findRoomByCodeOrThrow(request.code());
 
 		Set<String> members = room.getMemberIds() == null
 				? new LinkedHashSet<>()
@@ -72,8 +72,7 @@ public class RoomService {
 	}
 
 	public RoomResponse findByCode(String code) {
-		Room room = roomRepository.findByCode(code)
-				.orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "room not found"));
+		Room room = findRoomByCodeOrThrow(code);
 		return toRoomResponse(room);
 	}
 
@@ -126,6 +125,16 @@ public class RoomService {
 			code = UUID.randomUUID().toString();
 		} while (roomRepository.findByCode(code).isPresent());
 		return code;
+	}
+
+	private Room findRoomByCodeOrThrow(String code) {
+		String normalizedCode = normalizeRoomCode(code);
+		return roomRepository.findByCode(normalizedCode)
+				.orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "room not found"));
+	}
+
+	private String normalizeRoomCode(String code) {
+		return code == null ? null : code.trim().toLowerCase(Locale.ROOT);
 	}
 
 	private String selectOldestMember(Set<String> members) {

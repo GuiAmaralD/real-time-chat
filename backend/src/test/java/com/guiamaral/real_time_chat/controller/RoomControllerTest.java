@@ -18,7 +18,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -35,13 +34,13 @@ class RoomControllerTest {
 	private PresenceService presenceService;
 
 	@Mock
-	private SimpMessagingTemplate messagingTemplate;
+	private PresenceWebSocketController presenceWebSocketController;
 
 	private RoomController roomController;
 
 	@BeforeEach
 	void setUp() {
-		roomController = new RoomController(roomService, presenceService, messagingTemplate);
+		roomController = new RoomController(roomService, presenceService, presenceWebSocketController);
 	}
 
 	@Test
@@ -84,7 +83,7 @@ class RoomControllerTest {
 		assertEquals(HttpStatus.NO_CONTENT, response.getStatusCode());
 		verify(roomService).leave("room-1", "user-1");
 		verify(presenceService).removeUserFromRoom("room-1", "user-1");
-		verify(messagingTemplate).convertAndSend("/topic/rooms/room-1/presence", payload);
+		verify(presenceWebSocketController).broadcastPresenceUpdates(updates);
 	}
 
 	@Test

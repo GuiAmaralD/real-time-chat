@@ -13,7 +13,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.Mockito.verify;
@@ -26,13 +25,13 @@ class UserControllerTest {
 	private UserService userService;
 
 	@Mock
-	private SimpMessagingTemplate messagingTemplate;
+	private PresenceWebSocketController presenceWebSocketController;
 
 	private UserController userController;
 
 	@BeforeEach
 	void setUp() {
-		userController = new UserController(userService, messagingTemplate);
+		userController = new UserController(userService, presenceWebSocketController);
 	}
 
 	@Test
@@ -70,7 +69,7 @@ class UserControllerTest {
 
 		assertEquals(HttpStatus.NO_CONTENT, response.getStatusCode());
 		verify(userService).disconnectAndDelete("user-1");
-		verify(messagingTemplate).convertAndSend("/topic/rooms/room-1/presence", payload);
+		verify(presenceWebSocketController).broadcastPresenceUpdates(updates);
 	}
 
 }

@@ -12,7 +12,6 @@ import com.guiamaral.real_time_chat.service.RoomService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -26,16 +25,16 @@ public class RoomController {
 
 	private final RoomService roomService;
 	private final PresenceService presenceService;
-	private final SimpMessagingTemplate messagingTemplate;
+	private final PresenceWebSocketController presenceWebSocketController;
 
 	public RoomController(
 			RoomService roomService,
 			PresenceService presenceService,
-			SimpMessagingTemplate messagingTemplate
+			PresenceWebSocketController presenceWebSocketController
 	) {
 		this.roomService = roomService;
 		this.presenceService = presenceService;
-		this.messagingTemplate = messagingTemplate;
+		this.presenceWebSocketController = presenceWebSocketController;
 	}
 
 	@PostMapping
@@ -56,9 +55,7 @@ public class RoomController {
 		roomService.leave(roomId, request.userId());
 
 		var updates = presenceService.removeUserFromRoom(roomId, request.userId());
-		for (PresenceService.PresenceUpdate update : updates) {
-			messagingTemplate.convertAndSend("/topic/rooms/" + update.roomId() + "/presence", update.payload());
-		}
+		presenceWebSocketController.broadcastPresenceUpdates(updates);
 
 		return ResponseEntity.noContent().build();
 	}

@@ -101,7 +101,7 @@ class RoomServiceTest {
 			Room room = room("room-1", "General", "GEN01", "owner-1", Set.of("owner-1"));
 
 			when(userRepository.findById(userId)).thenReturn(Optional.of(new User(userId, "member")));
-			when(roomRepository.findByCode("GEN01")).thenReturn(Optional.of(room));
+			when(roomRepository.findByCode("gen01")).thenReturn(Optional.of(room));
 			when(roomRepository.findAll()).thenReturn(List.of(room));
 			when(roomRepository.save(any(Room.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -120,7 +120,7 @@ class RoomServiceTest {
 			Room r3 = room("r3", "C", "C1", "owner-3", Set.of(userId));
 
 			when(userRepository.findById(userId)).thenReturn(Optional.of(new User(userId, "member")));
-			when(roomRepository.findByCode("ROOM99")).thenReturn(Optional.of(targetRoom));
+			when(roomRepository.findByCode("room99")).thenReturn(Optional.of(targetRoom));
 			when(roomRepository.findAll()).thenReturn(List.of(targetRoom, r1, r2, r3));
 
 			ApiException exception = assertThrows(
@@ -130,6 +130,23 @@ class RoomServiceTest {
 
 			assertEquals(HttpStatus.CONFLICT, exception.getStatus());
 			verify(roomRepository, never()).save(any(Room.class));
+		}
+
+		@Test
+		void joinShouldFindRoomByCodeIgnoringCaseAndWhitespace() {
+			String userId = "member-1";
+			String storedCode = "f4e0c21e-8a71-4f8f-9df0-3c267be4cd7b";
+			Room room = room("room-1", "General", storedCode, "owner-1", Set.of("owner-1"));
+
+			when(userRepository.findById(userId)).thenReturn(Optional.of(new User(userId, "member")));
+			when(roomRepository.findByCode(storedCode)).thenReturn(Optional.of(room));
+			when(roomRepository.findAll()).thenReturn(List.of(room));
+			when(roomRepository.save(any(Room.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+			RoomResponse response = roomService.joinByCode(new JoinRoomRequest("  F4E0C21E-8A71-4F8F-9DF0-3C267BE4CD7B  ", userId));
+
+			assertTrue(response.memberIds().contains(userId));
+			verify(roomRepository).findByCode(storedCode);
 		}
 	}
 
@@ -225,6 +242,18 @@ class RoomServiceTest {
 		assertEquals(2, users.size());
 		assertEquals("owner", users.get(0).role());
 		assertEquals("member", users.get(1).role());
+	}
+
+	@Test
+	void findByCodeShouldIgnoreCaseAndWhitespace() {
+		String storedCode = "8f3578cc-6961-4478-8915-6f51dd2caed2";
+		Room room = room("room-1", "General", storedCode, "owner-1", Set.of("owner-1"));
+		when(roomRepository.findByCode(storedCode)).thenReturn(Optional.of(room));
+
+		RoomResponse response = roomService.findByCode("  8F3578CC-6961-4478-8915-6F51DD2CAED2 ");
+
+		assertEquals(storedCode, response.code());
+		verify(roomRepository).findByCode(storedCode);
 	}
 
 	private static Room room(String id, String name, String code, String ownerId, Set<String> members) {

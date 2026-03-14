@@ -3,12 +3,10 @@ package com.guiamaral.real_time_chat.controller;
 import com.guiamaral.real_time_chat.dto.user.CreateUserRequest;
 import com.guiamaral.real_time_chat.dto.user.RedisPingResponse;
 import com.guiamaral.real_time_chat.dto.user.UserResponse;
-import com.guiamaral.real_time_chat.service.PresenceService;
 import com.guiamaral.real_time_chat.service.UserService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -21,11 +19,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class UserController {
 
 	private final UserService userService;
-	private final SimpMessagingTemplate messagingTemplate;
+	private final PresenceWebSocketController presenceWebSocketController;
 
-	public UserController(UserService userService, SimpMessagingTemplate messagingTemplate) {
+	public UserController(UserService userService, PresenceWebSocketController presenceWebSocketController) {
 		this.userService = userService;
-		this.messagingTemplate = messagingTemplate;
+		this.presenceWebSocketController = presenceWebSocketController;
 	}
 
 	@PostMapping
@@ -45,9 +43,7 @@ public class UserController {
 
 	private ResponseEntity<Void> disconnectAndBroadcast(String userId) {
 		var updates = userService.disconnectAndDelete(userId);
-		for (PresenceService.PresenceUpdate update : updates) {
-			messagingTemplate.convertAndSend("/topic/rooms/" + update.roomId() + "/presence", update.payload());
-		}
+		presenceWebSocketController.broadcastPresenceUpdates(updates);
 		return ResponseEntity.noContent().build();
 	}
 }
