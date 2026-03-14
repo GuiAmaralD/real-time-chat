@@ -68,7 +68,7 @@
               class="room-leave"
               title="Leave room"
               aria-label="Leave room"
-              (click)="leaveRoom(room.code, $event)"
+              (click)="requestLeaveRoom(room.code, $event)"
             >
               X
             </button>
@@ -81,7 +81,25 @@
       @if (activeRoom; as room) {
         <section class="chat-content">
           <header class="chat-header">
-            <h3>{{ room.name }} (#{{ room.code }})</h3>
+            <div class="chat-header-content">
+              <div class="chat-header-item">
+                <span class="chat-header-label">Room Title:</span>
+                <span class="chat-header-value">{{ room.name }}</span>
+              </div>
+              <div class="chat-header-item chat-header-item-code">
+                <span class="chat-header-label">Code:</span>
+                <span class="chat-header-value chat-header-code-value">{{ room.code }}</span>
+                <button
+                  type="button"
+                  class="copy-code-button"
+                  aria-label="Copy room code"
+                  title="Copy room code"
+                  (click)="copyRoomCode(room.code)"
+                >
+                  <span class="copy-icon" aria-hidden="true"></span>
+                </button>
+              </div>
+            </div>
           </header>
 
           <section #messageList class="message-list">
@@ -134,4 +152,93 @@
       }
     </main>
   </section>
+
+  @if (copyToastVisible) {
+    <div
+      role="status"
+      aria-live="polite"
+      style="
+        position: fixed;
+        right: 1rem;
+        bottom: 1rem;
+        z-index: 1200;
+        padding: 0.62rem 0.78rem;
+        border-radius: 10px;
+        border: 1px solid #2a8f6f;
+        background: linear-gradient(160deg, #173b2f 0%, #102821 100%);
+        color: #dcfff1;
+        font-size: 0.8rem;
+        font-weight: 600;
+        box-shadow: 0 10px 20px rgb(0 0 0 / 28%);
+        backdrop-filter: blur(4px);
+      "
+    >
+      {{ copyToastMessage }}
+    </div>
+  }
+
+  @if (leaveRoomConfirmationCode) {
+    <div
+      style="
+        position: fixed;
+        inset: 0;
+        z-index: 1300;
+        background: rgb(5 10 16 / 62%);
+        backdrop-filter: blur(2px);
+      "
+      (click)="cancelLeaveRoomConfirmation()"
+    ></div>
+    <section
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="leave-room-confirmation-title"
+      style="
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        z-index: 1310;
+        width: min(390px, calc(100vw - 2rem));
+        padding: 0.95rem;
+        border-radius: 12px;
+        border: 1px solid #2d5877;
+        background: linear-gradient(160deg, #102739 0%, #0d1f2f 100%);
+        box-shadow: 0 16px 36px rgb(0 0 0 / 36%);
+      "
+      (click)="$event.stopPropagation()"
+    >
+      <h3 id="leave-room-confirmation-title" style="font-size: 0.98rem; margin: 0;">Leave room?</h3>
+      <p style="margin: 0.5rem 0 0; color: #b6ccdc; font-size: 0.84rem;">
+        You are about to leave "<strong style="color: #f0f9ff;">{{ leaveRoomConfirmationName }}</strong>".
+      </p>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.45rem; margin-top: 0.82rem;">
+        <button
+          type="button"
+          style="
+            border: 1px solid #4a6f88;
+            background: #18354a;
+            color: #edf7ff;
+            font-size: 0.82rem;
+            font-weight: 700;
+          "
+          (click)="cancelLeaveRoomConfirmation()"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          style="
+            border: 1px solid #6a3744;
+            background: #3d1d27;
+            color: #ffcad3;
+            font-size: 0.82rem;
+            font-weight: 700;
+          "
+          (click)="confirmLeaveRoom()"
+        >
+          Leave
+        </button>
+      </div>
+    </section>
+  }
 }

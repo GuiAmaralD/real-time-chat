@@ -203,8 +203,99 @@ button:disabled {
   border-bottom: 1px solid #24455f;
 }
 
-.chat-header h3 {
+.chat-header-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.45rem;
+  flex-wrap: nowrap;
+  width: 100%;
+}
+
+.chat-header-item {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  padding: 0.28rem 0.46rem;
+  border: 1px solid #345e7d;
+  border-radius: 9px;
+  background: #0b1f30;
+}
+
+.chat-header-label {
+  font-size: 0.7rem;
+  color: #9ad9ff;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 700;
+}
+
+.chat-header-value {
   font-size: 0.95rem;
+  font-weight: 800;
+}
+
+.chat-header-item-code {
+  align-items: center;
+}
+
+.chat-header-code-value {
+  font-family: 'Consolas', 'Courier New', monospace;
+  letter-spacing: 0.03em;
+  color: #b6f9df;
+}
+
+.copy-code-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.78rem;
+  height: 1.78rem;
+  padding: 0;
+  border: 1px solid #2f5672;
+  background: linear-gradient(160deg, #14344a 0%, #112a3d 100%);
+  color: var(--text-main);
+  border-radius: 7px;
+  transition: border-color 140ms ease, background 160ms ease;
+}
+
+.copy-code-button:hover {
+  background: linear-gradient(160deg, #1d4a68 0%, #15354c 100%);
+  border-color: #4b7ea2;
+}
+
+.copy-icon {
+  position: relative;
+  width: 0.9rem;
+  height: 0.9rem;
+}
+
+.copy-icon::before,
+.copy-icon::after {
+  content: '';
+  position: absolute;
+  border-radius: 0.16rem;
+  box-sizing: border-box;
+}
+
+.copy-icon::before {
+  width: 0.58rem;
+  height: 0.7rem;
+  top: 0.02rem;
+  left: 0.23rem;
+  border: 1.6px solid #c7dff2;
+  background: linear-gradient(180deg, #f8fcff 0%, #dce9f5 100%);
+  transform: rotate(1deg);
+}
+
+.copy-icon::after {
+  width: 0.58rem;
+  height: 0.7rem;
+  top: 0.18rem;
+  left: 0.02rem;
+  border: 1.6px solid #9fbad0;
+  background: linear-gradient(180deg, #d6e5f2 0%, #c2d6e7 100%);
+  transform: rotate(-2deg);
 }
 
 .members-rail {
@@ -436,6 +527,10 @@ textarea {
   .chat-main {
     grid-template-columns: 1fr;
     min-height: 60vh;
+  }
+
+  .chat-header-content {
+    flex-wrap: wrap;
   }
 
   .chat-content {

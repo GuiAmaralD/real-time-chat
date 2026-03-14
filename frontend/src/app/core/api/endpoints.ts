@@ -23,6 +23,7 @@ export const API_ENDPOINTS = {
     topicRoomMessages: (roomId: string): string => `/topic/rooms/${encoded(roomId)}/messages`,
     appJoinRoomPresence: (roomId: string): string => `/app/rooms/${encoded(roomId)}/presence/join`,
     appLeaveRoomPresence: (roomId: string): string => `/app/rooms/${encoded(roomId)}/presence/leave`,
-    topicRoomPresence: (roomId: string): string => `/topic/rooms/${encoded(roomId)}/presence`
+    topicRoomPresence: (roomId: string): string => `/topic/rooms/${encoded(roomId)}/presence`,
+    topicRoomOwnership: (roomId: string): string => `/topic/rooms/${encoded(roomId)}/ownership`
   }
 } as const;

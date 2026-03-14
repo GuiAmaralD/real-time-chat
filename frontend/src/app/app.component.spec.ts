@@ -31,6 +31,7 @@ describe('AppComponent', () => {
       'subscribeRoomMessages',
       'sendRoomMessage',
       'subscribeRoomPresence',
+      'subscribeRoomOwnership',
       'joinRoomPresence',
       'leaveRoomPresence'
     ]);
@@ -63,6 +64,7 @@ describe('AppComponent', () => {
       sentAt: '2026-03-12T12:00:00Z'
     };
     const roomRealtimeHandlers = new Map<string, (message: MessageResponse) => void>();
+    const roomOwnershipHandlers = new Map<string, (payload: unknown) => void>();
 
     userServiceMock.create.and.returnValue(of(createdUser));
     userServiceMock.disconnectOnUnload.and.stub();
@@ -83,6 +85,14 @@ describe('AppComponent', () => {
       }
     );
     chatWebSocketServiceMock.subscribeRoomPresence.and.callFake(async () => () => undefined);
+    chatWebSocketServiceMock.subscribeRoomOwnership.and.callFake(
+      async (roomId: string, handler: (payload: unknown) => void) => {
+        roomOwnershipHandlers.set(roomId, handler);
+        return () => {
+          roomOwnershipHandlers.delete(roomId);
+        };
+      }
+    );
     chatWebSocketServiceMock.joinRoomPresence.and.returnValue(Promise.resolve());
     chatWebSocketServiceMock.leaveRoomPresence.and.returnValue(Promise.resolve());
     chatWebSocketServiceMock.sendRoomMessage.and.callFake(
@@ -244,5 +254,39 @@ describe('AppComponent', () => {
     expect(roomServiceMock.leave).toHaveBeenCalledWith('room-2', { userId: 'user-1' });
     expect(component.joinedRooms.length).toBe(1);
     expect(component.activeRoomCode).toBe('MYROOM123');
+  });
+
+  it('should update owner when ownership event arrives', async () => {
+    const fixture = TestBed.createComponent(AppComponent);
+    const component = fixture.componentInstance as any;
+
+    const ownershipHandlers = new Map<string, (payload: unknown) => void>();
+    chatWebSocketServiceMock.subscribeRoomOwnership.and.callFake(
+      async (roomId: string, handler: (payload: unknown) => void) => {
+        ownershipHandlers.set(roomId, handler);
+        return () => {
+          ownershipHandlers.delete(roomId);
+        };
+      }
+    );
+
+    component.nicknameInput = 'Gui';
+    await component.enterChat();
+
+    component.searchRoomCodeInput = 'ws-intro';
+    await component.searchRoom();
+
+    const roomBefore = component.activeRoom;
+    expect(roomBefore.ownerId).toBe('owner-1');
+    expect(roomBefore.members.find((member: any) => member.id === 'owner-1')?.role).toBe('owner');
+
+    const ownershipHandler = ownershipHandlers.get('room-2');
+    expect(ownershipHandler).toBeDefined();
+    ownershipHandler?.({ roomId: 'room-2', ownerId: 'user-1' });
+
+    const roomAfter = component.activeRoom;
+    expect(roomAfter.ownerId).toBe('user-1');
+    expect(roomAfter.members.find((member: any) => member.id === 'user-1')?.role).toBe('owner');
+    expect(roomAfter.members.find((member: any) => member.id === 'owner-1')?.role).toBe('member');
   });
 });

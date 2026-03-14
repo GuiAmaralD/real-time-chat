@@ -7,6 +7,7 @@ import { MessageResponse, SendMessageRequest } from '../models/message.model';
 
 type MessageHandler = (message: MessageResponse) => void;
 type PresenceHandler = (payload: unknown) => void;
+type OwnershipHandler = (payload: unknown) => void;
 
 interface PresenceRequest {
   userId: string;
@@ -20,9 +21,11 @@ export class ChatWebSocketService implements OnDestroy {
 
   private readonly messageHandlersByTopic = new Map<string, Set<MessageHandler>>();
   private readonly presenceHandlersByTopic = new Map<string, Set<PresenceHandler>>();
+  private readonly ownershipHandlersByTopic = new Map<string, Set<OwnershipHandler>>();
 
   private readonly messageSubscriptionsByTopic = new Map<string, StompSubscription>();
   private readonly presenceSubscriptionsByTopic = new Map<string, StompSubscription>();
+  private readonly ownershipSubscriptionsByTopic = new Map<string, StompSubscription>();
 
   async connect(): Promise<void> {
     if (this.isConnected) {
@@ -68,6 +71,7 @@ export class ChatWebSocketService implements OnDestroy {
         this.isConnected = false;
         this.messageSubscriptionsByTopic.clear();
         this.presenceSubscriptionsByTopic.clear();
+        this.ownershipSubscriptionsByTopic.clear();
       };
     });
 
@@ -158,9 +162,37 @@ export class ChatWebSocketService implements OnDestroy {
     };
   }
 
+  async subscribeRoomOwnership(roomId: string, handler: OwnershipHandler): Promise<() => void> {
+    const topic = API_ENDPOINTS.websocket.topicRoomOwnership(roomId);
+
+    const handlers = this.ownershipHandlersByTopic.get(topic) ?? new Set<OwnershipHandler>();
+    handlers.add(handler);
+    this.ownershipHandlersByTopic.set(topic, handlers);
+
+    await this.connect();
+    this.ensureOwnershipSubscription(topic);
+
+    return () => {
+      const currentHandlers = this.ownershipHandlersByTopic.get(topic);
+      if (!currentHandlers) {
+        return;
+      }
+
+      currentHandlers.delete(handler);
+      if (currentHandlers.size > 0) {
+        return;
+      }
+
+      this.ownershipHandlersByTopic.delete(topic);
+      this.ownershipSubscriptionsByTopic.get(topic)?.unsubscribe();
+      this.ownershipSubscriptionsByTopic.delete(topic);
+    };
+  }
+
   disconnect(): void {
     this.messageHandlersByTopic.clear();
     this.presenceHandlersByTopic.clear();
+    this.ownershipHandlersByTopic.clear();
 
     for (const subscription of this.messageSubscriptionsByTopic.values()) {
       subscription.unsubscribe();
@@ -171,6 +203,11 @@ export class ChatWebSocketService implements OnDestroy {
       subscription.unsubscribe();
     }
     this.presenceSubscriptionsByTopic.clear();
+
+    for (const subscription of this.ownershipSubscriptionsByTopic.values()) {
+      subscription.unsubscribe();
+    }
+    this.ownershipSubscriptionsByTopic.clear();
 
     this.client?.deactivate();
     this.client = null;
@@ -230,6 +267,30 @@ export class ChatWebSocketService implements OnDestroy {
     this.presenceSubscriptionsByTopic.set(topic, subscription);
   }
 
+  private ensureOwnershipSubscription(topic: string): void {
+    if (!this.client || !this.isConnected || this.ownershipSubscriptionsByTopic.has(topic)) {
+      return;
+    }
+
+    const subscription = this.client.subscribe(topic, (messageFrame: IMessage) => {
+      const payload = this.parseJson(messageFrame.body);
+      if (payload === null) {
+        return;
+      }
+
+      const handlers = this.ownershipHandlersByTopic.get(topic);
+      if (!handlers) {
+        return;
+      }
+
+      for (const handler of handlers) {
+        handler(payload);
+      }
+    });
+
+    this.ownershipSubscriptionsByTopic.set(topic, subscription);
+  }
+
   private resubscribeAllTopics(): void {
     for (const topic of this.messageHandlersByTopic.keys()) {
       this.ensureMessageSubscription(topic);
@@ -237,6 +298,10 @@ export class ChatWebSocketService implements OnDestroy {
 
     for (const topic of this.presenceHandlersByTopic.keys()) {
       this.ensurePresenceSubscription(topic);
+    }
+
+    for (const topic of this.ownershipHandlersByTopic.keys()) {
+      this.ensureOwnershipSubscription(topic);
     }
   }
 

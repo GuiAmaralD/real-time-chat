@@ -47,7 +47,9 @@ export class AppComponent implements OnDestroy {
   private currentUserId: string | null = null;
   private readonly roomRealtimeUnsubscribers = new Map<string, () => void>();
   private readonly roomPresenceUnsubscribers = new Map<string, () => void>();
+  private readonly roomOwnershipUnsubscribers = new Map<string, () => void>();
   private readonly presenceJoinedRoomIds = new Set<string>();
+  private copyToastTimeoutId: ReturnType<typeof setTimeout> | null = null;
   private disconnectTriggered = false;
 
   protected screenStep: ScreenStep = 'nickname';
@@ -66,6 +68,9 @@ export class AppComponent implements OnDestroy {
   protected joinedRooms: ChatRoom[] = [];
   protected activeRoomCode: string | null = null;
   protected showMembersPanel = false;
+  protected copyToastVisible = false;
+  protected copyToastMessage = '';
+  protected leaveRoomConfirmationCode: string | null = null;
 
   protected draft = '';
 
@@ -214,8 +219,52 @@ export class AppComponent implements OnDestroy {
     this.roomInfo = `You left room "${room.name}".`;
   }
 
+  protected requestLeaveRoom(code: string, event?: Event): void {
+    event?.stopPropagation();
+    this.leaveRoomConfirmationCode = code;
+  }
+
+  protected cancelLeaveRoomConfirmation(): void {
+    this.leaveRoomConfirmationCode = null;
+  }
+
+  protected async confirmLeaveRoom(): Promise<void> {
+    const code = this.leaveRoomConfirmationCode;
+    this.leaveRoomConfirmationCode = null;
+    if (!code) {
+      return;
+    }
+
+    await this.leaveRoom(code);
+  }
+
+  protected get leaveRoomConfirmationName(): string {
+    if (!this.leaveRoomConfirmationCode) {
+      return '';
+    }
+
+    return this.joinedRooms.find((room) => room.code === this.leaveRoomConfirmationCode)?.name
+      ?? this.leaveRoomConfirmationCode;
+  }
+
   protected toggleMembersPanel(): void {
     this.showMembersPanel = !this.showMembersPanel;
+  }
+
+  protected async copyRoomCode(roomCode: string): Promise<void> {
+    const code = roomCode.trim();
+    if (!code) {
+      return;
+    }
+
+    const copied = await this.copyTextToClipboard(code);
+    if (!copied) {
+      this.roomError = 'Unable to copy room code.';
+      return;
+    }
+
+    this.roomError = '';
+    this.showCopyToast('Codigo da sala copiado para a area de transferencia.');
   }
 
   protected async sendMessage(): Promise<void> {
@@ -292,6 +341,7 @@ export class AppComponent implements OnDestroy {
     try {
       await this.ensureRealtimeSubscription(room.id);
       await this.ensurePresenceRealtimeSubscription(room.id);
+      await this.ensureOwnershipRealtimeSubscription(room.id);
     } catch {
       this.roomInfo = `Room "${room.name}" opened without realtime updates.`;
     }
@@ -324,6 +374,18 @@ export class AppComponent implements OnDestroy {
     });
 
     this.roomPresenceUnsubscribers.set(roomId, unsubscribe);
+  }
+
+  private async ensureOwnershipRealtimeSubscription(roomId: string): Promise<void> {
+    if (this.roomOwnershipUnsubscribers.has(roomId)) {
+      return;
+    }
+
+    const unsubscribe = await this.chatWebSocketService.subscribeRoomOwnership(roomId, (payload) => {
+      this.handleOwnershipUpdate(roomId, payload);
+    });
+
+    this.roomOwnershipUnsubscribers.set(roomId, unsubscribe);
   }
 
   private async syncPresenceForActiveRoom(
@@ -370,6 +432,12 @@ export class AppComponent implements OnDestroy {
       this.roomPresenceUnsubscribers.delete(roomId);
     }
 
+    const ownershipUnsubscribe = this.roomOwnershipUnsubscribers.get(roomId);
+    if (ownershipUnsubscribe) {
+      ownershipUnsubscribe();
+      this.roomOwnershipUnsubscribers.delete(roomId);
+    }
+
     if (this.currentUserId && this.presenceJoinedRoomIds.has(roomId)) {
       try {
         await this.chatWebSocketService.leaveRoomPresence(roomId, this.currentUserId);
@@ -402,6 +470,37 @@ export class AppComponent implements OnDestroy {
       ...room,
       members: sortedMembers,
       usersById
+    };
+
+    this.upsertRoom(updatedRoom);
+  }
+
+  private handleOwnershipUpdate(roomId: string, payload: unknown): void {
+    const room = this.joinedRooms.find((joinedRoom) => joinedRoom.id === roomId);
+    if (!room) {
+      return;
+    }
+
+    const ownership = this.extractOwnership(payload);
+    if (!ownership) {
+      return;
+    }
+
+    if (ownership.roomId !== roomId || ownership.ownerId === room.ownerId) {
+      return;
+    }
+
+    const members = this.sortMembers(
+      room.members.map((member) => ({
+        ...member,
+        role: member.id === ownership.ownerId ? 'owner' : 'member'
+      }))
+    );
+
+    const updatedRoom: ChatRoom = {
+      ...room,
+      ownerId: ownership.ownerId,
+      members
     };
 
     this.upsertRoom(updatedRoom);
@@ -539,6 +638,25 @@ export class AppComponent implements OnDestroy {
     return { id, nickname, role };
   }
 
+  private extractOwnership(payload: unknown): { roomId: string; ownerId: string } | null {
+    if (!this.isRecord(payload)) {
+      return null;
+    }
+
+    const roomId = typeof payload['roomId'] === 'string'
+      ? payload['roomId']
+      : (typeof payload['roomid'] === 'string' ? payload['roomid'] : null);
+    const ownerId = typeof payload['ownerId'] === 'string'
+      ? payload['ownerId']
+      : (typeof payload['ownerid'] === 'string' ? payload['ownerid'] : null);
+
+    if (!roomId || !ownerId) {
+      return null;
+    }
+
+    return { roomId, ownerId };
+  }
+
   private isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null;
   }
@@ -584,6 +702,10 @@ export class AppComponent implements OnDestroy {
 
   ngOnDestroy(): void {
     this.triggerUserDisconnect();
+    if (this.copyToastTimeoutId) {
+      clearTimeout(this.copyToastTimeoutId);
+      this.copyToastTimeoutId = null;
+    }
 
     if (this.currentUserId) {
       for (const roomId of this.presenceJoinedRoomIds) {
@@ -600,6 +722,12 @@ export class AppComponent implements OnDestroy {
       unsubscribe();
     }
     this.roomPresenceUnsubscribers.clear();
+
+    for (const unsubscribe of this.roomOwnershipUnsubscribers.values()) {
+      unsubscribe();
+    }
+    this.roomOwnershipUnsubscribers.clear();
+
     this.presenceJoinedRoomIds.clear();
   }
 
@@ -621,5 +749,51 @@ export class AppComponent implements OnDestroy {
 
       listElement.scrollTop = listElement.scrollHeight;
     });
+  }
+
+  private async copyTextToClipboard(text: string): Promise<boolean> {
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+        return true;
+      }
+    } catch {
+      // Fall through to legacy copy path.
+    }
+
+    try {
+      if (typeof document === 'undefined') {
+        return false;
+      }
+
+      const temp = document.createElement('textarea');
+      temp.value = text;
+      temp.setAttribute('readonly', '');
+      temp.style.position = 'fixed';
+      temp.style.opacity = '0';
+      temp.style.pointerEvents = 'none';
+      document.body.appendChild(temp);
+      temp.focus();
+      temp.select();
+      const copied = document.execCommand('copy');
+      document.body.removeChild(temp);
+      return copied;
+    } catch {
+      return false;
+    }
+  }
+
+  private showCopyToast(message: string): void {
+    this.copyToastMessage = message;
+    this.copyToastVisible = true;
+
+    if (this.copyToastTimeoutId) {
+      clearTimeout(this.copyToastTimeoutId);
+    }
+
+    this.copyToastTimeoutId = setTimeout(() => {
+      this.copyToastVisible = false;
+      this.copyToastTimeoutId = null;
+    }, 2000);
   }
 }
