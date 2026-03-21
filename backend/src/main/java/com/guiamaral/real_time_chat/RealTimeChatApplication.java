@@ -21,12 +21,29 @@ public class RealTimeChatApplication {
 	}
 
 	@Bean
+	@ConditionalOnProperty(name = "app.redis.flush-on-startup", havingValue = "true")
+	CommandLineRunner flushRedisOnStartup(StringRedisTemplate redisTemplate) {
+		return args -> {
+			RedisConnectionFactory connectionFactory = redisTemplate.getConnectionFactory();
+			if (connectionFactory == null) {
+				throw new IllegalStateException("RedisConnectionFactory was not initialized.");
+			}
+
+			try (RedisConnection connection = connectionFactory.getConnection()) {
+				connection.serverCommands().flushDb();
+			}
+
+			log.warn("Redis was flushed on startup (flushdb) because app.redis.flush-on-startup=true.");
+		};
+	}
+
+	@Bean
 	@ConditionalOnProperty(name = "app.redis.verify-on-startup", havingValue = "true")
 	CommandLineRunner verifyRedisConnection(StringRedisTemplate redisTemplate) {
 		return args -> {
 			RedisConnectionFactory connectionFactory = redisTemplate.getConnectionFactory();
 			if (connectionFactory == null) {
-				throw new IllegalStateException("RedisConnectionFactory nao foi inicializada.");
+				throw new IllegalStateException("RedisConnectionFactory was not initialized.");
 			}
 
 			String response;
@@ -35,9 +52,9 @@ public class RealTimeChatApplication {
 			}
 
 			if (response == null || !"PONG".equalsIgnoreCase(response)) {
-				throw new IllegalStateException("Redis nao respondeu ao ping na inicializacao.");
+				throw new IllegalStateException("Redis did not respond to ping during startup.");
 			}
-			log.info("Conexao com Redis estabelecida com sucesso: {}", response);
+			log.info("Redis connection established successfully: {}", response);
 		};
 	}
 

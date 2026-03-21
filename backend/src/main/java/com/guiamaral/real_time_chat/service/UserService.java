@@ -107,7 +107,7 @@ public class UserService {
 	public RedisPingResponse pingRedis() {
 		RedisConnectionFactory connectionFactory = Objects.requireNonNull(
 				redisTemplate.getConnectionFactory(),
-				"RedisConnectionFactory nao foi inicializada."
+				"RedisConnectionFactory was not initialized."
 		);
 
 		String response;
