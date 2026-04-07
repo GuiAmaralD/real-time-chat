@@ -12,6 +12,7 @@ A aplicação foi construída com o objetivo de explorar conceitos como:
 - Gerenciamento de conexões simultâneas
 - Troca de mensagens instantânea
 - Spring WebSocket (STOMP)
+- Redis
 
 ---
 
